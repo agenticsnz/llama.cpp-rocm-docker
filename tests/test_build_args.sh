@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Tests build-rocm.sh's argument resolution without invoking docker.
+# The --dry-run mode makes the ownership, collision and warning rules testable
+# without paying a four-minute build per case.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC="$(cd "$HERE/.." && pwd)"
+SCRIPT="$SRC/build-rocm.sh"
+# Directory holding the three axis env files the build script reads.
+CONF="$SRC/conf"
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH"' EXIT
+
+PASS=0
+FAIL=0
+
+note_pass() { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
+note_fail() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
+
+# expect_line <output-file> <exact line>
+expect_line() {
+    if grep -qxF -- "$2" "$1"; then note_pass "emits: $2"
+    else note_fail "expected line: $2"; fi
+}
+
+# reject_line <output-file> <exact line>
+reject_line() {
+    if grep -qxF -- "$2" "$1"; then note_fail "unexpected line: $2"
+    else note_pass "absent: $2"; fi
+}
+
+# expect_stderr <err-file> <substring>
+expect_stderr() {
+    if grep -qF -- "$2" "$1"; then note_pass "warns: $2"
+    else note_fail "expected warning containing: $2"; fi
+}
+
+run_dry() {  # run_dry <out> <err> <arch> <rocm> <config>
+    "$SCRIPT" --arch-env "$3" --rocm-env "$4" --config-env "$5" \
+        --source "$SRC" --dry-run >"$1" 2>"$2"
+    echo $?
+}
+
+echo "== three-file happy path =="
+rc=$(run_dry "$SCRATCH/o1" "$SCRATCH/e1" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/o1" "--build-arg GPU_TARGET=gfx1200"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.1-full"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_VERSION=7.14.1"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_CORE_DIR=/opt/rocm/core-7.14"
+expect_line "$SCRATCH/o1" "--build-arg CMAKE_BUILD_TYPE=Release"
+expect_line "$SCRATCH/o1" "--build-arg GGML_NATIVE=OFF"
+expect_line "$SCRATCH/o1" "--build-arg GGML_CUDA_FA_QUANTS=all"
+expect_line "$SCRATCH/o1" \
+    "--tag 192.168.178.40:5001/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.0.0"
+expect_line "$SCRATCH/o1" \
+    "--tag 192.168.178.40:5001/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:latest"
+
+echo
+echo "== the deprecated all-quants key is set by no env file =="
+# GGML_CUDA_FA_ALL_QUANTS is deprecated upstream: common.cmake warns that it is
+# superseded by GGML_CUDA_FA_QUANTS=all and overrides it to all regardless. A file
+# carrying it would put a deprecation warning in every configure log and express
+# nothing that GGML_CUDA_FA_QUANTS=all does not, so none of the three may set it.
+for env_file in "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env"; do
+    if grep -qE '^[[:space:]]*GGML_CUDA_FA_ALL_QUANTS[[:space:]]*=' "$env_file"; then
+        note_fail "$(basename "$env_file") sets the deprecated GGML_CUDA_FA_ALL_QUANTS"
+    else
+        note_pass "$(basename "$env_file") does not set the deprecated GGML_CUDA_FA_ALL_QUANTS"
+    fi
+done
+# The emitted form would be "--build-arg GGML_CUDA_FA_ALL_QUANTS=<value>", so this
+# is a substring test rather than reject_line's whole-line match.
+if grep -q 'GGML_CUDA_FA_ALL_QUANTS' "$SCRATCH/o1"; then
+    note_fail "the resolved arguments carry the deprecated GGML_CUDA_FA_ALL_QUANTS"
+else
+    note_pass "the resolved arguments carry no GGML_CUDA_FA_ALL_QUANTS"
+fi
+
+echo
+echo "== ownership: a key in two files resolves to the owner and warns =="
+# Each axis file carries a stray key belonging to the other axis. The owner's
+# value must win in both directions, and each loss must be reported.
+cat > "$SCRATCH/cross-arch.env" <<'ENV'
+GPU_TARGET=gfx1200
+ARCH_STRING=gfx1200
+ROCM_BASE=rocm/dev-ubuntu-24.04:9.9.9-full
+ENV
+cat > "$SCRATCH/cross-rocm.env" <<'ENV'
+ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.1-full
+ROCM_VERSION=7.14.1
+ROCM_BASE_ASSEMBLY=published-multiarch-image
+ROCM_CORE_DIR=/opt/rocm/core-7.14
+LD_LIBRARY_PATH=/opt/rocm/lib
+GPU_TARGET=gfx9999
+ENV
+rc=$(run_dry "$SCRATCH/o2" "$SCRATCH/e2" \
+    "$SCRATCH/cross-arch.env" "$SCRATCH/cross-rocm.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0 on collision" || note_fail "exit was $rc, want 0"
+# GPU_TARGET is owned by the architecture file, so gfx9999 from the version file loses
+expect_line "$SCRATCH/o2" "--build-arg GPU_TARGET=gfx1200"
+reject_line "$SCRATCH/o2" "--build-arg GPU_TARGET=gfx9999"
+expect_stderr "$SCRATCH/e2" "GPU_TARGET"
+expect_stderr "$SCRATCH/e2" "arch axis"
+# ROCM_BASE is owned by the version file, so 9.9.9 from the architecture file loses
+expect_line "$SCRATCH/o2" "--build-arg ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.1-full"
+reject_line "$SCRATCH/o2" "--build-arg ROCM_BASE=rocm/dev-ubuntu-24.04:9.9.9-full"
+expect_stderr "$SCRATCH/e2" "ROCM_BASE"
+
+echo
+echo "== axis-neutral key duplicated in an axis file loses to build-config.env =="
+# --config-env names the neutral file itself, so the duplicate has to be planted
+# in an axis file: a stray CMAKE_BUILD_TYPE there must not win.
+cat > "$SCRATCH/stray-cfg.env" <<'ENV'
+GPU_TARGET=gfx1200
+ARCH_STRING=gfx1200
+CMAKE_BUILD_TYPE=Debug
+ENV
+rc=$(run_dry "$SCRATCH/o3" "$SCRATCH/e3" \
+    "$SCRATCH/stray-cfg.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/o3" "--build-arg CMAKE_BUILD_TYPE=Release"
+reject_line "$SCRATCH/o3" "--build-arg CMAKE_BUILD_TYPE=Debug"
+expect_stderr "$SCRATCH/e3" "CMAKE_BUILD_TYPE"
+
+echo
+echo "== multi-target GPU_TARGET with a single-target filename warns, exits 0 =="
+cat > "$SCRATCH/amd-gfx1200.env" <<'ENV'
+GPU_TARGET=gfx1200;gfx1201
+ARCH_STRING=gfx1200
+ENV
+rc=$(run_dry "$SCRATCH/o4" "$SCRATCH/e4" \
+    "$SCRATCH/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/o4" "--build-arg GPU_TARGET=gfx1200;gfx1201"
+expect_stderr "$SCRATCH/e4" "GPU_TARGET"
+
+echo
+echo "== version filename disagreeing with ROCM_VERSION warns, exits 0 =="
+cat > "$SCRATCH/amd-9.9.9.env" <<'ENV'
+ROCM_BASE=rocm/dev-ubuntu-24.04:9.9.9-full
+ROCM_VERSION=9.9.9
+ROCM_BASE_ASSEMBLY=published-multiarch-image
+ROCM_CORE_DIR=/opt/rocm/core-9.9
+ENV
+rc=$(run_dry "$SCRATCH/o5" "$SCRATCH/e5" \
+    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-9.9.9.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/o5" "--build-arg ROCM_VERSION=9.9.9"
+
+echo
+echo "== ROCM_VERSION disagreeing with the tag inside ROCM_BASE warns =="
+cat > "$SCRATCH/amd-7.14.1.env" <<'ENV'
+ROCM_BASE=rocm/dev-ubuntu-24.04:8.8.8-full
+ROCM_VERSION=7.14.1
+ROCM_BASE_ASSEMBLY=published-multiarch-image
+ROCM_CORE_DIR=/opt/rocm/core-7.14
+LD_LIBRARY_PATH=/opt/rocm/lib
+ENV
+rc=$(run_dry "$SCRATCH/o6" "$SCRATCH/e6" \
+    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-7.14.1.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_stderr "$SCRATCH/e6" "ROCM_BASE"
+
+echo
+echo "== unknown keys pass through unchanged =="
+cat > "$SCRATCH/extra-arch.env" <<'ENV'
+GPU_TARGET=gfx1200
+ARCH_STRING=gfx1200
+SOME_FUTURE_FLAG=7
+ENV
+rc=$(run_dry "$SCRATCH/o7" "$SCRATCH/e7" \
+    "$SCRATCH/extra-arch.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/o7" "--build-arg SOME_FUTURE_FLAG=7"
+
+echo
+echo "== missing required flag exits non-zero =="
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --source "$SRC" --dry-run \
+    >"$SCRATCH/o8" 2>&1
+[ $? -ne 0 ] && note_pass "missing flags rejected" || note_fail "accepted a bad invocation"
+
+echo
+printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]

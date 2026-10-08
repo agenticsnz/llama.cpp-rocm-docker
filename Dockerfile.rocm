@@ -1,0 +1,319 @@
+# Compile llama.cpp's HIP backend for one GPU architecture in AMD's full ROCm
+# development image, then record the ROCm library closure that a slim runtime
+# stage needs.
+#
+# The compile happens in the multi-architecture -full base because that is the
+# route the 7.14.1 version file selects, and that base is roughly 28 GB. The
+# runtime stage reads only the closure file and the built binaries from this
+# stage and discards the rest, which is what keeps the published image in the
+# low single-digit gigabytes rather than at the full base's size.
+#
+# The build context is a llama.cpp source tree at the pinned tag, because the
+# stage copies the whole tree as its source. build-rocm.sh takes that tree as
+# its --source argument and passes this file with -f.
+
+# The base image is supplied by the ROCm version env file, so this file names no
+# release and the version axis can be changed without editing it. It carries no
+# default on purpose: a build without a base has no compiler, and failing at
+# FROM says so more clearly than failing later at configure time.
+ARG ROCM_BASE
+
+# The LLVM target list, supplied by the architecture env file. It is
+# semicolon separated because one architecture file may legitimately compile for
+# several cards, which is what the file is named for rather than its contents.
+ARG GPU_TARGET
+
+# How the base was assembled. The 7.14.1 version file records the published
+# multi-architecture image; a per-architecture package set is the other route
+# available at this release. Nothing below branches on this key, because this
+# stage consumes a base image either way. It is declared so the choice is
+# visible in the build history and cannot drift from the value the version file
+# already names.
+ARG ROCM_BASE_ASSEMBLY=published-multiarch-image
+
+# Version-scoped ROCm install root inside the base, supplied by the ROCm
+# version env file (e.g. /opt/rocm/core-7.14). It carries no default on
+# purpose: 7.14.0 and 7.14.1 share core-7.14, so it is not derivable from
+# ROCM_VERSION, and a build copying from the wrong tree ships no backend.
+ARG ROCM_CORE_DIR
+
+# Build type, supplied by the axis-neutral env file. The default only makes a
+# bare invocation of this file produce a usable binary; the env file is what a
+# real build reads.
+ARG CMAKE_BUILD_TYPE=Release
+
+# FlashAttention K-V type combinations, supplied by the architecture env file.
+#
+# The default is `all`, the complete cross-product of the seven types upstream
+# supports, which is 49 combinations. Upstream issue ggml-org/llama.cpp#27761
+# reports that on ROCm only q4_0 and q8_0 avoid severe graph splitting, with the
+# others costing roughly 68 percent of prefill throughput, so a narrower list is
+# available and is a per-architecture decision rather than a default. There is
+# no arch-dependent gating in llama.cpp to encode, so the default compiles
+# everything rather than excluding types nothing here has measured.
+#
+# GGML_CUDA_FA_ALL_QUANTS is deliberately not consumed. It is deprecated
+# upstream, warns at configure time and is overridden to `all` anyway, so
+# `GGML_CUDA_FA_QUANTS=all` expresses the same thing without a warning in every
+# configure log.
+#
+# f16-f16 is compiled whatever this is set to, because upstream's
+# ggml/cmake/common.cmake seeds the combination list with it before applying the
+# caller's value. It is also load-bearing rather than merely present:
+# ggml/src/ggml-cuda/fattn.cu uses it as the fallback for any K/V type with no
+# compiled vector kernel, and the line after that fallback is a GGML_ASSERT, so
+# excluding the instance would turn a slow path into an abort.
+ARG GGML_CUDA_FA_QUANTS=all
+
+# Pass-through for additional -D flags, so an unusual build needs no edit here.
+ARG CMAKE_EXTRA_ARGS=""
+
+FROM ${ROCM_BASE} AS build
+
+# Bash with pipefail, so a configure step that fails is still a failed step.
+# The default shell is dash, which has no pipefail, and the configure output is
+# piped to tee below: without this, tee would report success for a cmake that
+# failed and the failure would surface later as a confusing compile error.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Every build ARG is re-declared here because an ARG declared before the first
+# FROM is only visible to FROM lines. A build ARG used in a RUN without being
+# re-declared expands to an empty string, which is how a build silently loses
+# its FlashAttention coverage and its build type.
+ARG GPU_TARGET
+ARG CMAKE_BUILD_TYPE
+ARG GGML_CUDA_FA_QUANTS
+ARG CMAKE_EXTRA_ARGS
+
+# The CPU backend would otherwise be tuned to whichever host compiled the image,
+# since GGML_NATIVE is ON by default when not cross-compiling. Upstream's own
+# release workflow passes OFF for the same reason.
+ENV GGML_NATIVE=OFF
+
+# rocBLAS selects its kernels from the environment at build time as well as from
+# AMDGPU_TARGETS, which is what upstream's own rocm.Dockerfile sets. Passing
+# both keeps this stage's build identical to an upstream fat build narrowed to
+# one architecture.
+ENV AMDGPU_TARGETS=${GPU_TARGET}
+
+# Build tooling only. git is not needed to compile a pinned source tree that is
+# already a checkout, but the CMake configure step looks for it and warns
+# without it, and the staged apt lists are removed so the layer carries no
+# package index.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git libssl-dev libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# The whole tree is copied because the build configures from the repository
+# root, and CMake needs the ggml and common sources alongside the tools.
+COPY . .
+
+# Configure and compile in one layer, so a compile failure names the configure
+# that produced it rather than arriving in a later step. HIPCXX and HIP_PATH
+# point at the toolchain this base image installed; the -D flags are the build
+# settings, and GGML_HIP_NO_VMM is a literal rather than a parameter because
+# enabling VMM re-exposes an open cuMemSetAccess crash and a 32 GB virtual
+# address cap that would block any large model. Pinning it here means no env
+# file can turn that on. GGML_BACKEND_DL requires GGML_CPU_ALL_VARIANTS, so the
+# two are always set together.
+#
+# The configure output is teed to a file inside the image because the settings
+# CMake reports at configure time — which FlashAttention K/V combinations it
+# compiled, whether it found HIP — are only visible in that output. A cached
+# rebuild prints nothing to the build log, so a check that reads the log would
+# report on Docker's cache state rather than on the build. The file travels with
+# the layer, so the same assertions hold on a cold and on a cached build.
+RUN HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
+    cmake -S . -B build \
+        -DGGML_HIP=ON \
+        -DAMDGPU_TARGETS="${GPU_TARGET}" \
+        -DGGML_BACKEND_DL=ON \
+        -DGGML_CPU_ALL_VARIANTS=ON \
+        -DGGML_NATIVE="${GGML_NATIVE}" \
+        -DGGML_CUDA_FA_QUANTS="${GGML_CUDA_FA_QUANTS}" \
+        -DGGML_HIP_NO_VMM=ON \
+        -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" \
+        -DLLAMA_BUILD_TESTS=OFF \
+        ${CMAKE_EXTRA_ARGS} \
+    2>&1 | tee /src/configure.log \
+    && test -s /src/configure.log \
+    && cmake --build build --config Release -j"$(nproc)"
+
+# Record the ROCm libraries the built binaries resolve to, so the runtime stage
+# copies a known set rather than the whole multi-architecture base.
+#
+# ldd is run with LD_LIBRARY_PATH set because this base registers no ROCm
+# directory with the dynamic loader, so without it every ROCm dependency is
+# reported as "not found" and this file would come out empty. That is exactly
+# the silent failure the runtime stage is exposed to, so it is made loud here:
+# an empty closure stops the build.
+#
+# readlink -f resolves each path through /etc/alternatives to the real file
+# under the versioned core tree. The runtime stage must copy the resolved path,
+# because a COPY of the symlinked /opt/rocm/lib copies nothing.
+RUN set -e; \
+    mkdir -p /opt/closure; \
+    LD_LIBRARY_PATH=/opt/rocm/lib ldd \
+        /src/build/bin/llama \
+        /src/build/bin/llama-server \
+        /src/build/bin/libggml-hip.so \
+        /src/build/bin/*.so \
+        2>/dev/null \
+    | grep -oE '/opt/rocm/[^[:space:]]+' \
+    | while read -r resolved_candidate; do readlink -f "$resolved_candidate"; done \
+    | sort -u > /opt/closure/paths.txt; \
+    if [ ! -s /opt/closure/paths.txt ]; then \
+        echo "the ROCm library closure is empty. ldd resolved no /opt/rocm library, so the runtime stage would ship no compute backend while still starting and passing a healthcheck." >&2; \
+        exit 1; \
+    fi
+
+# Report the closure size and the ROCm version in the build log, so a build that
+# produced an implausibly small or empty closure is visible without running the
+# image.
+RUN printf 'ROCm %s for %s; %s ROCm libraries in the closure.\n' \
+        "$(hipconfig --version)" \
+        "${GPU_TARGET}" \
+        "$(wc -l < /opt/closure/paths.txt)"
+
+
+# ---- Runtime tree assembly ------------------------------------------------
+#
+# Selection happens here rather than in the runtime stage, and the reason is
+# measured rather than stylistic: a `COPY` of the whole /opt/rocm followed by a
+# later `rm` does not reclaim the space. Docker keeps the earlier layer even
+# though the file is absent from the final filesystem - a 200 MB test file added
+# and then deleted still left its layer counted - so a copy-then-delete shape
+# against a 19 GB base yields a ~19 GB image. Assembling the trimmed tree here
+# and copying only that means the 19 GB never becomes a layer at all.
+FROM build AS runtime-tree
+
+ARG GPU_TARGET
+ARG ROCM_CORE_DIR
+
+# Assemble the ROCm tree the runtime image ships: the resolved library closure
+# plus every kernel blob whose name carries this architecture's token, both placed
+# at the paths they occupy in the base image.
+#
+# The paths are preserved exactly, which is not cosmetic. The closure libraries
+# resolve each other through $ORIGIN RUNPATHs - librocroller's is
+# "$ORIGIN/host-math/lib:$ORIGIN/rocm_sysdeps/lib:$ORIGIN/llvm/lib:$ORIGIN" -
+# and rocBLAS contains the literal "/../rocblas/library" and looks for its
+# kernels relative to itself. Flattening everything into one directory, as an
+# earlier version of this file did, breaks both while still producing an image
+# that starts, reports the GPU through amd-smi and passes its healthcheck.
+#
+# The version-scoped core tree (e.g. /opt/rocm/core-7.14) is the copy source
+# rather than /opt/rocm because the
+# latter's lib and bin are /etc/alternatives symlinks into it, and COPY follows
+# no symlink, so the symlinked paths would arrive empty.
+#
+# The architecture filter is a recursive filename match, and it needs no
+# exception for arch-independent data: measured at ROCm 7.14.1, zero files under
+# rocblas/library or hipblaslt lack a gfx token in their name, so a name match
+# captures every file those trees need for this card and no others.
+RUN set -euo pipefail; \
+    mkdir -p /runtime/rocm; \
+    while read -r resolved_library; do \
+        relative_path="${resolved_library#${ROCM_CORE_DIR}/}"; \
+        mkdir -p "/runtime/rocm/$(dirname "$relative_path")"; \
+        cp -a "$resolved_library" "/runtime/rocm/$relative_path"; \
+    done < /opt/closure/paths.txt; \
+    cd "${ROCM_CORE_DIR}"; \
+    find . -type f -name "*${GPU_TARGET}*" \
+        -exec cp --parents {} /runtime/rocm/ \; ; \
+    if [ -z "$(find /runtime/rocm -type f -name "*${GPU_TARGET}*")" ]; then \
+        echo "no ${GPU_TARGET} kernel blobs were found under /opt/rocm. The runtime image would have no GPU kernels, so it would start cleanly and report no compute device." >&2; \
+        exit 1; \
+    fi; \
+    printf 'runtime tree: %s files, %s MB of %s.\n' \
+        "$(find /runtime/rocm -type f | wc -l)" \
+        "$(du -sm /runtime/rocm | cut -f1)" \
+        "$(du -sm /opt/rocm | cut -f1)"
+
+
+# ---- Runtime image --------------------------------------------------------
+#
+# A plain Ubuntu rather than the ROCm base, so the image carries the runtime and
+# nothing else. This is the stage that carries the silent-failure risk, and it is
+# why the resolution assertions below fail the build rather than warn: a missing
+# library produces an image that starts, reports the GPU, passes a healthcheck,
+# and serves nothing.
+FROM ubuntu:24.04 AS runtime
+
+# libgomp1 is the OpenMP runtime libggml links; curl and ca-certificates serve the
+# healthcheck; ffmpeg is a llama.cpp runtime dependency. The staged apt lists are
+# removed so the layer carries no package index.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 curl ffmpeg ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# The trimmed ROCm tree, copied from the assembly stage so only the selected
+# files cross the boundary.
+COPY --from=runtime-tree /runtime/rocm /opt/rocm
+
+# The server, the CLI and the backend libraries. Copied whole from the build tree
+# rather than selected, because the CPU backend's runtime variant selection needs
+# the full set present to choose from.
+#
+# This is copied before ldconfig runs, not after, because ldconfig has to see the
+# directory to register what is in it: the binaries carry RUNPATH /src/build/bin,
+# a build-time path that does not exist here, so libggml-base.so and its siblings
+# are only reachable through the cache this command builds.
+COPY --from=build /src/build/bin/ /app/
+
+# Register ROCm and the application with the dynamic loader.
+#
+# The 7.14.1 -full base this image is built from ships no ld.so.conf.d entry for
+# ROCm at all, which is why LD_LIBRARY_PATH is carried per ROCm version in the
+# version env file; this is what makes the image self-contained, so the variable
+# is belt-and-braces rather than load-bearing.
+#
+# Three ROCm directories are listed because the closure is not one directory. It
+# spans lib/, lib/llvm/lib/ and lib/rocm_sysdeps/lib/, and libggml-hip.so links
+# librocm_sysdeps_z and friends with no $ORIGIN path of its own, so they are not
+# found unless the directory holding them is on the loader's search list. The
+# $ORIGIN RUNPATHs on librocroller and libhsa-runtime64 cover their own
+# dependencies now that the layout is preserved, but they do not cover what
+# libggml-hip.so needs directly.
+#
+# ldconfig also creates the SONAME symlinks, which the closure requires because its
+# filenames are not its SONAMEs: libamdhip64.so.7 is the SONAME of the file named
+# libamdhip64.so.7.14.60850-0000000, and nothing resolves the dependency without
+# that link existing.
+RUN printf '/opt/rocm/lib\n/opt/rocm/lib/llvm/lib\n/opt/rocm/lib/rocm_sysdeps/lib\n/app\n' \
+        > /etc/ld.so.conf.d/rocm.conf \
+    && ldconfig
+
+# Fail the build unless the ROCm backend is fully loadable. This is the specific
+# silent failure the whole runtime stage exists to prevent: an image missing
+# libamdhip64, librocblas or libhipblas starts cleanly, amd-smi reports the GPU,
+# and llama-server --list-devices prints (none). Asserting resolution here means
+# that image can never be produced, rather than being discovered on the GPU.
+RUN set -e; \
+    unresolved="$(ldd /app/libggml-hip.so | grep 'not found' || true)"; \
+    if [ -n "$unresolved" ]; then \
+        echo "libggml-hip.so has unresolved libraries, so the image would start and report no compute device:" >&2; \
+        echo "$unresolved" >&2; \
+        exit 1; \
+    fi; \
+    for required_library in libamdhip64 librocblas libhipblas; do \
+        if ! ldd /app/libggml-hip.so | grep -q "$required_library"; then \
+            echo "ldd /app/libggml-hip.so does not name $required_library. The ROCm backend is not linked as expected, so the build is wrong rather than merely incomplete." >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    ldd /app/llama-server | grep 'not found' && { \
+        echo "llama-server has unresolved libraries, so the server would start and fail on first use:" >&2; \
+        exit 1; \
+    } || true; \
+    echo "loader resolves every library in the ROCm backend and the server."
+
+ENV LLAMA_ARG_HOST=0.0.0.0
+WORKDIR /app
+
+# 8084 is the port the compose service publishes and the SillyTavern URL uses.
+# The container listens on it, so the healthcheck has to probe it.
+HEALTHCHECK CMD curl -f http://localhost:8084/health || exit 1
+ENTRYPOINT ["/app/llama-server"]
