@@ -15,6 +15,29 @@ trap 'rm -rf "$SCRATCH"' EXIT
 PASS=0
 FAIL=0
 
+# Read one KEY=value assignment from a real axis file. Expectations below are
+# derived from the checked-in configuration, never hardcoded: the files are
+# configurable, so pinning their contents here would break on every legitimate
+# config edit. Scratch-file cases stay self-contained.
+conf_key() {
+    sed -n "s/^$2=//p" "$CONF/$1" | head -1
+}
+
+EXPECTED_GPU_TARGET="$(conf_key amd-gfx1200.env GPU_TARGET)"
+EXPECTED_ARCH_STRING="$(conf_key amd-gfx1200.env ARCH_STRING)"
+EXPECTED_FA_QUANTS="$(conf_key amd-gfx1200.env GGML_CUDA_FA_QUANTS)"
+EXPECTED_ROCM_BASE="$(conf_key amd-7.14.1.env ROCM_BASE)"
+EXPECTED_ROCM_VERSION="$(conf_key amd-7.14.1.env ROCM_VERSION)"
+EXPECTED_ROCM_CORE_DIR="$(conf_key amd-7.14.1.env ROCM_CORE_DIR)"
+EXPECTED_CMAKE_BUILD_TYPE="$(conf_key build-config.env CMAKE_BUILD_TYPE)"
+EXPECTED_GGML_NATIVE="$(conf_key build-config.env GGML_NATIVE)"
+EXPECTED_REGISTRY="$(conf_key build-config.env REGISTRY)"
+EXPECTED_LLAMA_CPP_VERSION="$(conf_key build-config.env LLAMA_CPP_VERSION)"
+EXPECTED_IMAGE_VERSION="$(conf_key build-config.env VERSION)"
+# Image reference layout mirrors build_image_reference (registry, fixed
+# label root and repository, llama version, ROCm version, arch, image version).
+EXPECTED_IMAGE_REF="$EXPECTED_REGISTRY/agenticsnz/llama.cpp-$EXPECTED_LLAMA_CPP_VERSION-amd-$EXPECTED_ROCM_VERSION-$EXPECTED_ARCH_STRING"
+
 note_pass() { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 note_fail() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 
@@ -46,17 +69,17 @@ echo "== three-file happy path =="
 rc=$(run_dry "$SCRATCH/o1" "$SCRATCH/e1" \
     "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
-expect_line "$SCRATCH/o1" "--build-arg GPU_TARGET=gfx1200"
-expect_line "$SCRATCH/o1" "--build-arg ROCM_BASE=rocm/dev-ubuntu-24.04:7.14.1-full"
-expect_line "$SCRATCH/o1" "--build-arg ROCM_VERSION=7.14.1"
-expect_line "$SCRATCH/o1" "--build-arg ROCM_CORE_DIR=/opt/rocm/core-7.14"
-expect_line "$SCRATCH/o1" "--build-arg CMAKE_BUILD_TYPE=Release"
-expect_line "$SCRATCH/o1" "--build-arg GGML_NATIVE=OFF"
-expect_line "$SCRATCH/o1" "--build-arg GGML_CUDA_FA_QUANTS=all"
+expect_line "$SCRATCH/o1" "--build-arg GPU_TARGET=$EXPECTED_GPU_TARGET"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_BASE=$EXPECTED_ROCM_BASE"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_VERSION=$EXPECTED_ROCM_VERSION"
+expect_line "$SCRATCH/o1" "--build-arg ROCM_CORE_DIR=$EXPECTED_ROCM_CORE_DIR"
+expect_line "$SCRATCH/o1" "--build-arg CMAKE_BUILD_TYPE=$EXPECTED_CMAKE_BUILD_TYPE"
+expect_line "$SCRATCH/o1" "--build-arg GGML_NATIVE=$EXPECTED_GGML_NATIVE"
+expect_line "$SCRATCH/o1" "--build-arg GGML_CUDA_FA_QUANTS=$EXPECTED_FA_QUANTS"
 expect_line "$SCRATCH/o1" \
-    "--tag 192.168.178.40:5001/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.0.0"
+    "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
 expect_line "$SCRATCH/o1" \
-    "--tag 192.168.178.40:5001/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:latest"
+    "--tag $EXPECTED_IMAGE_REF:latest"
 
 echo
 echo "== the deprecated all-quants key is set by no env file =="
@@ -189,7 +212,7 @@ rc=$(run_dry "$SCRATCH/s1" "$SCRATCH/se1" \
     --set ROCM_VERSION=10.1.0)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=10.1.0"
-reject_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=7.14.1"
+reject_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=$EXPECTED_ROCM_VERSION"
 expect_stderr "$SCRATCH/se1" "ROCM_VERSION"
 
 echo
@@ -251,7 +274,7 @@ rc=$( ( export REGISTRY=shell-registry:5000 SOME_RANDOM_EXPORT=leak EMPTY_EXPORT
   run_dry "$SCRATCH/s6" "$SCRATCH/se6" \
     "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" ) )
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
-expect_line "$SCRATCH/s6" "--build-arg REGISTRY=192.168.178.40:5001"
+expect_line "$SCRATCH/s6" "--build-arg REGISTRY=$EXPECTED_REGISTRY"
 reject_line "$SCRATCH/s6" "--build-arg REGISTRY=shell-registry:5000"
 if grep -q 'SOME_RANDOM_EXPORT\|EMPTY_EXPORT' "$SCRATCH/s6"; then
   note_fail "shell-only unknown keys leaked into build args"

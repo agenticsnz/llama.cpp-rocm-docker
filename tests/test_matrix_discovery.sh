@@ -31,8 +31,19 @@ reject_output() {
 echo "== --list shows every real version file with derived values =="
 bash "$RUNNER" --list >"$SCRATCH/l1" 2>"$SCRATCH/le1"
 [ $? -eq 0 ] && note_pass "exit 0" || note_fail "exit non-zero"
-expect_output "$SCRATCH/l1" "7.14.1 gfx1200 rocm/dev-ubuntu-24.04:7.14.1-full /opt/rocm/core-7.14 7.14"
-expect_output "$SCRATCH/l1" "10.1.0 gfx1200 rocm/dev-ubuntu-24.04:10.1.0-full /opt/rocm/core-10.1 10.1"
+# Expected lines are composed from the checked-in files, never hardcoded: for
+# every discovered version/arch pair the line carries that pair's own values.
+shopt -s nullglob
+for version_file in "$CONF"/amd-[0-9]*.env; do
+    version="$(sed -n 's/^ROCM_VERSION=//p' "$version_file" | head -1)"
+    base="$(sed -n 's/^ROCM_BASE=//p' "$version_file" | head -1)"
+    core="$(sed -n 's/^ROCM_CORE_DIR=//p' "$version_file" | head -1)"
+    for arch_file in "$CONF"/amd-gfx*.env; do
+        target="$(sed -n 's/^GPU_TARGET=//p' "$arch_file" | head -1)"
+        expect_output "$SCRATCH/l1" "$version $target $base $core ${version%.*}"
+    done
+done
+shopt -u nullglob
 
 echo
 echo "== discovery follows the directory, not a hardcoded list =="
@@ -55,7 +66,9 @@ reject_output "$SCRATCH/l2" "7.14.1 gfx1200 rocm/dev-ubuntu-24.04:7.14.1-full /o
 
 echo
 echo "== arch files never appear as versions =="
-if grep -q "gfx1200 gfx1200" "$SCRATCH/l1"; then
+# A version line starts with a version number; an arch token in field one
+# would mean an arch file leaked into the version discovery.
+if awk '{print $1}' "$SCRATCH/l1" | grep -q '^gfx'; then
     note_fail "arch file listed as a version"
 else
     note_pass "no arch file listed as a version"
