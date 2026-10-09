@@ -20,9 +20,9 @@ BUILD_LOG="$HERE/../runtime-stage.log"
 readonly TEST_IMAGE='llamacpp-rocm-runtime-check:latest'
 readonly LLAMA_CPP_TAG='v0.5.0'
 readonly LLAMA_CPP_REPOSITORY='https://github.com/ggml-org/llama.cpp.git'
-readonly ROCM_BASE='rocm/dev-ubuntu-24.04:7.14.1-full'
-readonly ROCM_CORE_DIR='/opt/rocm/core-7.14'
-readonly GPU_TARGET='gfx1200'
+readonly ROCM_BASE="${ROCM_BASE:-rocm/dev-ubuntu-24.04:7.14.1-full}"
+readonly ROCM_CORE_DIR="${ROCM_CORE_DIR:-/opt/rocm/core-7.14}"
+readonly GPU_TARGET="${GPU_TARGET:-gfx1200}"
 readonly UPSTREAM_DOCKERFILE_PATH='.devops/rocm.Dockerfile'
 
 # The size ceiling. The trimmed ROCm tree measures about 1211 MB and the

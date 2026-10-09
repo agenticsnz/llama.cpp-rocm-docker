@@ -17,10 +17,10 @@ BUILD_LOG="$HERE/../build-stage.log"
 readonly TEST_IMAGE='llamacpp-build-stage-check:latest'
 readonly LLAMA_CPP_TAG='v0.5.0'
 readonly LLAMA_CPP_REPOSITORY='https://github.com/ggml-org/llama.cpp.git'
-readonly ROCM_BASE='rocm/dev-ubuntu-24.04:7.14.1-full'
-readonly ROCM_CORE_DIR='/opt/rocm/core-7.14'
-readonly GPU_TARGET='gfx1200'
-readonly EXPECTED_ROCM_PREFIX='7.14'
+readonly ROCM_BASE="${ROCM_BASE:-rocm/dev-ubuntu-24.04:7.14.1-full}"
+readonly ROCM_CORE_DIR="${ROCM_CORE_DIR:-/opt/rocm/core-7.14}"
+readonly GPU_TARGET="${GPU_TARGET:-gfx1200}"
+readonly EXPECTED_ROCM_PREFIX="${EXPECTED_ROCM_PREFIX:-7.14}"
 readonly EXPECTED_HIPBLAS_MARKER='HIP and hipBLAS found'
 readonly EXPECTED_FA_MARKER='FlashAttention K-V type combinations'
 
