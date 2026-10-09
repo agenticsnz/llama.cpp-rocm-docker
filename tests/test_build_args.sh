@@ -338,5 +338,28 @@ else
 fi
 
 echo
+echo "== --no-cache reaches docker only when requested =="
+STUB_LOG="$SCRATCH/argv-nc.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" --no-cache \
+    >"$SCRATCH/o10" 2>&1
+[ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
+if grep -qxF -- '<--no-cache>' "$SCRATCH/argv-nc.log"; then
+    note_pass "--no-cache passed to docker"
+else
+    note_fail "--no-cache missing from docker argv"
+fi
+STUB_LOG="$SCRATCH/argv-c.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    >"$SCRATCH/o11" 2>&1
+[ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
+if grep -qxF -- '<--no-cache>' "$SCRATCH/argv-c.log"; then
+    note_fail "--no-cache passed without the flag"
+else
+    note_pass "--no-cache absent by default"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

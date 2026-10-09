@@ -24,6 +24,7 @@ ROCM_ENV_FILE=''
 CONFIG_ENV_FILE=''
 SOURCE_DIR=''
 DRY_RUN='no'
+NO_CACHE='no'
 
 # Resolved absolute paths of the three files, so ownership compares like with like.
 ARCH_ENV_PATH=''
@@ -91,7 +92,7 @@ readonly BASE_TAG_PATTERN='.*:([0-9][0-9.]*)(-[a-z-]*)$'
 readonly ARCH_TOKEN_PREFIX='amd-'
 readonly VERSION_TOKEN_PREFIX='amd-'
 
-USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> --source <path> [--dry-run] [--set KEY=VALUE ...]"
+USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> --source <path> [--dry-run] [--no-cache] [--set KEY=VALUE ...]"
 
 die() {
     printf '%s: %s\n' "$(basename "$0")" "$1" >&2
@@ -339,6 +340,7 @@ parse_arguments() {
                 shift 2
                 ;;
             --dry-run) DRY_RUN='yes'; shift ;;
+            --no-cache) NO_CACHE='yes'; shift ;;
             -h|--help)   printf '%s\n' "$USAGE_MESSAGE"; exit 0 ;;
             *)           die "unrecognised argument '$1'. $USAGE_MESSAGE" ;;
         esac
@@ -391,6 +393,9 @@ main() {
     done
     build_arguments+=(--tag "$image_reference:${RESOLVED_VALUE[VERSION]}")
     build_arguments+=(--tag "$image_reference:$TAG_LATEST")
+    # Cache bypass sits with the other docker options, ahead of the -f flag
+    # and the context path, which docker requires last.
+    [ "$NO_CACHE" = 'yes' ] && build_arguments+=(--no-cache)
     build_arguments+=(-f "$SCRIPT_DIR/Dockerfile.rocm" "$SOURCE_DIR")
 
     docker build "${build_arguments[@]}" || die "docker build failed for '$image_reference'. The build log above names the failing step."
