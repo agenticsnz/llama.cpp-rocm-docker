@@ -277,5 +277,32 @@ expect_line "$SCRATCH/s8" "--build-arg REGISTRY=b"
 reject_line "$SCRATCH/s8" "--build-arg REGISTRY=a"
 
 echo
+echo "== docker receives flag and value as separate arguments =="
+# A stub docker records one line per argv element. The script must pass
+# --build-arg and KEY=VALUE as two elements: one fused '--build-arg KEY=VAL'
+# element makes buildx fail with "unknown flag: --build-arg KEY".
+mkdir -p "$SCRATCH/stubbin" "$SCRATCH/fakesrc/.devops"
+printf '#!/usr/bin/env bash\nfor a in "$@"; do printf "<%%s>\\n" "$a"; done >>"$STUB_LOG"\n' > "$SCRATCH/stubbin/docker"
+chmod +x "$SCRATCH/stubbin/docker"
+touch "$SCRATCH/fakesrc/.devops/rocm.Dockerfile"
+STUB_LOG="$SCRATCH/argv.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    >"$SCRATCH/o9" 2>&1
+[ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
+if grep -qxF -- '<--build-arg>' "$SCRATCH/argv.log" \
+    && grep -qxF -- '<ARCH_STRING=gfx1200>' "$SCRATCH/argv.log" \
+    && grep -qxF -- '<--tag>' "$SCRATCH/argv.log"; then
+    note_pass "flag and value arrive as separate argv elements"
+else
+    note_fail "flag and value are not separate argv elements"
+fi
+if grep -q -- '^<--build-arg .*>' "$SCRATCH/argv.log"; then
+    note_fail "fused '--build-arg KEY=VAL' element passed to docker"
+else
+    note_pass "no fused flag elements"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

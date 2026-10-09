@@ -374,9 +374,12 @@ main() {
         die "'$SOURCE_DIR/.devops/rocm.Dockerfile' not found. The build context must be a llama.cpp checkout at a tag carrying .devops/rocm.Dockerfile, which the build copies whole."
 
     local -a build_arguments=()
-    mapfile -t build_arguments < <(emit_resolved_arguments)
-    mapfile -t build_arguments_tags < <(emit_tag_arguments "$image_reference")
-    build_arguments+=("${build_arguments_tags[@]}")
+    local resolved_key
+    for resolved_key in $(printf '%s\n' "${!RESOLVED_VALUE[@]}" | sort); do
+        build_arguments+=(--build-arg "$resolved_key=${RESOLVED_VALUE[$resolved_key]}")
+    done
+    build_arguments+=(--tag "$image_reference:${RESOLVED_VALUE[VERSION]}")
+    build_arguments+=(--tag "$image_reference:$TAG_LATEST")
     build_arguments+=(-f .devops/rocm.Dockerfile .)
 
     cd "$SOURCE_DIR" || die "cannot change into source tree '$SOURCE_DIR': the build copies the whole tree as its context."
