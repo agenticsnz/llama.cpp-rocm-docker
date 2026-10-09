@@ -70,14 +70,22 @@ axis. The other copy is reported and discarded.
 - The **AMD Container Toolkit**, so `docker` exposes the GPU
 - An amdgpu host driver on 30.x or 31.x (ROCm release numbers and amdgpu
   driver numbers are separate schemes)
-- A llama.cpp source checkout at the tag named by `LLAMA_CPP_VERSION`. This is
-  a path outside this repository — the build copies that whole tree as its
-  build context.
+- A llama.cpp source checkout is fetched automatically at the tag named by
+  `LLAMA_CPP_VERSION` (cached under `.tmp/`, shared with the stage tests).
+  Pass `--source /path/to/llama.cpp` to build from a local tree instead.
 
 ## Building
 
 All three configuration files are required. The script rejects a partial
-invocation rather than guessing which axis was meant:
+invocation rather than guessing which axis was meant. The source tree is
+fetched automatically; `--source` is only needed for a local checkout:
+
+```bash
+./build-rocm.sh \
+  --arch-env conf/amd-gfx1200.env \
+  --rocm-env conf/amd-7.14.1.env \
+  --config-env conf/build-config.env
+```
 
 ```bash
 ./build-rocm.sh \
