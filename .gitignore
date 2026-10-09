@@ -1,0 +1,12 @@
+# Build logs written by tests/test_build_stage.sh and tests/test_runtime_stage.sh.
+build-stage.log
+runtime-stage.log
+
+# llama.cpp checkout the stage tests clone and cache between runs.
+.tmp/
+.config
+.local
+
+# Devcontainer artefacts regenerated on every rebuild.
+.devcontainer/devcontainer-lock.json
+.devcontainer/.env
