@@ -16,12 +16,12 @@
 # release and the version axis can be changed without editing it. It carries no
 # default on purpose: a build without a base has no compiler, and failing at
 # FROM says so more clearly than failing later at configure time.
-ARG ROCM_BASE
+ARG ROCM_BASE=rocm/dev-ubuntu-24.04:10.1.0-full
 
 # The LLVM target list, supplied by the architecture env file. It is
 # semicolon separated because one architecture file may legitimately compile for
 # several cards, which is what the file is named for rather than its contents.
-ARG GPU_TARGET
+ARG GPU_TARGET=gfx1200
 
 # How the base was assembled. The 7.14.1 version file records the published
 # multi-architecture image; a per-architecture package set is the other route
@@ -35,7 +35,7 @@ ARG ROCM_BASE_ASSEMBLY=published-multiarch-image
 # version env file (e.g. /opt/rocm/core-7.14). It carries no default on
 # purpose: 7.14.0 and 7.14.1 share core-7.14, so it is not derivable from
 # ROCM_VERSION, and a build copying from the wrong tree ships no backend.
-ARG ROCM_CORE_DIR
+ARG ROCM_CORE_DIR=/opt/rocm/core-10.1
 
 # Build type, supplied by the axis-neutral env file. The default only makes a
 # bare invocation of this file produce a usable binary; the env file is what a
@@ -316,9 +316,9 @@ RUN set -e; \
     echo "loader resolves every library in the ROCm backend and the server."
 
 ENV LLAMA_ARG_HOST=0.0.0.0
+ENV LLAMA_ARG_PORT=8080
 WORKDIR /app
 
-# 8084 is the port the compose service publishes and the SillyTavern URL uses.
-# The container listens on it, so the healthcheck has to probe it.
-HEALTHCHECK CMD curl -f http://localhost:8084/health || exit 1
+
+HEALTHCHECK CMD curl -f http://localhost:${LLAMA_ARG_PORT}/health || exit 1
 ENTRYPOINT ["/app/llama-server"]
