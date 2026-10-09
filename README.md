@@ -76,7 +76,7 @@ axis. The other copy is reported and discarded.
 - An amdgpu host driver on 30.x or 31.x (ROCm release numbers and amdgpu
   driver numbers are separate schemes)
 - A llama.cpp source checkout is fetched automatically at the tag named by
-  `LLAMA_CPP_VERSION` (cached under `.tmp/`, shared with the stage tests).
+  `LLAMA_CPP_VERSION` (cached under `llama.cpp/<tag>/`).
   Pass `--source /path/to/llama.cpp` to build from a local tree instead.
 
 ## Building
