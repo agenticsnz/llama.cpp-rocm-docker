@@ -61,6 +61,10 @@ declare -a REQUIRED_KEYS=(
 # value rather than whichever file happened to be read first.
 declare -A FILE_VALUE=()
 
+# Command-line overrides from repeatable --set KEY=VALUE flags, keyed by key.
+# Later occurrences overwrite earlier ones, so the last --set for a key wins.
+declare -A CLI_VALUE=()
+
 # Surviving values after ownership is applied.
 declare -A RESOLVED_VALUE=()
 
@@ -79,7 +83,7 @@ readonly BASE_TAG_PATTERN='.*:([0-9][0-9.]*)(-[a-z-]*)$'
 readonly ARCH_TOKEN_PREFIX='amd-'
 readonly VERSION_TOKEN_PREFIX='amd-'
 
-USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> --source <path> [--dry-run]"
+USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> --source <path> [--dry-run] [--set KEY=VALUE ...]"
 
 die() {
     printf '%s: %s\n' "$(basename "$0")" "$1" >&2
@@ -161,6 +165,28 @@ apply_ownership() {
             [ -n "${RESOLVED_VALUE[$key]}" ] || RESOLVED_VALUE["$key"]="$(value_from_file "${ROCM_ENV_PATH}" "$key")"
             [ -n "${RESOLVED_VALUE[$key]}" ] || RESOLVED_VALUE["$key"]="$(value_from_file "${CONFIG_ENV_PATH}" "$key")"
         fi
+    done
+}
+
+# Apply command-line --set overrides onto the resolved values. For each --set
+# key the CLI value wins: when the files resolved a different value that value
+# is reported naming the key and the losing files, then discarded. Previously
+# unseen keys pass through unchanged, and identical values stay silent.
+apply_cli_overrides() {
+    local key cli_value resolved_value file_path file_value losing_files
+    for key in "${!CLI_VALUE[@]}"; do
+        cli_value="${CLI_VALUE[$key]:-}"
+        resolved_value="${RESOLVED_VALUE[$key]:-}"
+        if [ -n "$resolved_value" ] && [ "$resolved_value" != "$cli_value" ]; then
+            losing_files=""
+            for file_path in "$ARCH_ENV_PATH" "$ROCM_ENV_PATH" "$CONFIG_ENV_PATH"; do
+                file_value="$(value_from_file "$file_path" "$key")"
+                [ -n "$file_value" ] || continue
+                losing_files="$losing_files '$file_path'"
+            done
+            warn "key $key is set on the command line via --set, overriding$losing_files. The CLI value wins, so those copies are discarded."
+        fi
+        RESOLVED_VALUE["$key"]="$cli_value"
     done
 }
 
@@ -247,9 +273,20 @@ emit_tag_arguments() {
 }
 
 parse_arguments() {
-    local flag_name flag_value
+    local flag_name flag_value set_argument set_key set_value
     while [ $# -gt 0 ]; do
         case "$1" in
+            --set)
+                set_argument="${2:-}"
+                [ -n "$set_argument" ] || die "--set requires a KEY=VALUE argument. $USAGE_MESSAGE"
+                [[ "$set_argument" == *"$ASSIGNMENT_SEPARATOR"* ]] || die "invalid --set value '$set_argument': expected KEY=VALUE. $USAGE_MESSAGE"
+                set_key="${set_argument%%"$ASSIGNMENT_SEPARATOR"*}"
+                set_key="${set_key//[[:space:]]/}"
+                [ -n "$set_key" ] || die "invalid --set value '$set_argument': key is empty. $USAGE_MESSAGE"
+                set_value="${set_argument#*"$ASSIGNMENT_SEPARATOR"}"
+                CLI_VALUE["$set_key"]="$set_value"
+                shift 2
+                ;;
             --arch-env|--rocm-env|--config-env|--source)
                 flag_name="$1"
                 flag_value="${2:-}"
@@ -285,6 +322,7 @@ main() {
     load_configuration_file "$ROCM_ENV_PATH"
     load_configuration_file "$CONFIG_ENV_PATH"
     apply_ownership
+    apply_cli_overrides
     require_keys_present
     run_consistency_checks
 

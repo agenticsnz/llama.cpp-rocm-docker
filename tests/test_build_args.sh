@@ -36,9 +36,9 @@ expect_stderr() {
     else note_fail "expected warning containing: $2"; fi
 }
 
-run_dry() {  # run_dry <out> <err> <arch> <rocm> <config>
+run_dry() {  # run_dry <out> <err> <arch> <rocm> <config> [extra args...]
     "$SCRIPT" --arch-env "$3" --rocm-env "$4" --config-env "$5" \
-        --source "$SRC" --dry-run >"$1" 2>"$2"
+        --source "$SRC" "${@:6}" --dry-run >"$1" 2>"$2"
     echo $?
 }
 
@@ -181,6 +181,31 @@ echo "== missing required flag exits non-zero =="
 "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --source "$SRC" --dry-run \
     >"$SCRATCH/o8" 2>&1
 [ $? -ne 0 ] && note_pass "missing flags rejected" || note_fail "accepted a bad invocation"
+
+echo
+echo "== --set displaces a file value =="
+rc=$(run_dry "$SCRATCH/s1" "$SCRATCH/se1" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    --set ROCM_VERSION=10.1.0)
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=10.1.0"
+reject_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=7.14.1"
+expect_stderr "$SCRATCH/se1" "ROCM_VERSION"
+
+echo
+echo "== malformed --set is fatal =="
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --set NOEQUALS --dry-run >"$SCRATCH/s2" 2>&1
+[ $? -ne 0 ] && note_pass "bare --set rejected" || note_fail "accepted --set without ="
+
+echo
+echo "== --set keeps value after first equals and strips key whitespace =="
+rc=$(run_dry "$SCRATCH/s3" "$SCRATCH/se3" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    --set SOME_FUTURE_FLAG=a=b --set " GPU_TARGET =gfx1200")
+expect_line "$SCRATCH/s3" "--build-arg SOME_FUTURE_FLAG=a=b"
+expect_line "$SCRATCH/s3" "--build-arg GPU_TARGET=gfx1200"
 
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
