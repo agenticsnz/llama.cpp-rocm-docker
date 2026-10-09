@@ -93,7 +93,12 @@ readonly BASE_TAG_PATTERN='.*:([0-9][0-9.]*)(-[a-z-]*)$'
 readonly ARCH_TOKEN_PREFIX='amd-'
 readonly VERSION_TOKEN_PREFIX='amd-'
 
-USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> --source <path> [--dry-run] [--no-cache] [--verbose] [--set KEY=VALUE ...]"
+# Upstream source fetched when --source is omitted. The cache layout mirrors
+# the stage tests, so a tree the tests fetched is reused here and vice versa.
+readonly LLAMA_CPP_REPOSITORY='https://github.com/ggml-org/llama.cpp.git'
+readonly UPSTREAM_DOCKERFILE_PATH='.devops/rocm.Dockerfile'
+
+USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> [--source <path>] [--dry-run] [--no-cache] [--verbose] [--set KEY=VALUE ...]"
 
 die() {
     printf '%s: %s\n' "$(basename "$0")" "$1" >&2
@@ -350,8 +355,33 @@ parse_arguments() {
     [ -n "$ARCH_ENV_FILE" ]   || die "--arch-env was not supplied. $USAGE_MESSAGE"
     [ -n "$ROCM_ENV_FILE" ]   || die "--rocm-env was not supplied. $USAGE_MESSAGE"
     [ -n "$CONFIG_ENV_FILE" ] || die "--config-env was not supplied. $USAGE_MESSAGE"
-    [ -n "$SOURCE_DIR" ]      || die "--source was not supplied. $USAGE_MESSAGE"
-    [ -d "$SOURCE_DIR" ]      || die "source tree '$SOURCE_DIR' is not a directory. Pass the llama.cpp repository root, which the build copies whole as its context."
+    # --source is optional: when omitted the build fetches LLAMA_CPP_VERSION
+    # into the cache after resolution, so only a supplied path is validated here.
+    [ -z "$SOURCE_DIR" ] || [ -d "$SOURCE_DIR" ] || die "source tree '$SOURCE_DIR' is not a directory. Pass the llama.cpp repository root, or omit --source to fetch LLAMA_CPP_VERSION automatically."
+}
+
+# Fetch the llama.cpp source at the resolved tag when --source was omitted.
+# A supplied --source tree is used as-is. The default tree lives in .tmp/
+# beside this script, the same cache the stage tests use, so either side
+# reuses what the other fetched. Runs after the --dry-run early return, so
+# argument resolution never touches the network.
+ensure_source_context() {
+    local llama_tag cached_dir
+    llama_tag="${RESOLVED_VALUE[LLAMA_CPP_VERSION]}"
+    cached_dir="$SCRIPT_DIR/.tmp/llama-cpp-$llama_tag"
+    [ -n "$SOURCE_DIR" ] && return 0
+    if [ -d "$cached_dir/.git" ] && [ -f "$cached_dir/$UPSTREAM_DOCKERFILE_PATH" ]; then
+        SOURCE_DIR="$cached_dir"
+        return 0
+    fi
+    if [ -e "$cached_dir" ]; then
+        rm -rf "$cached_dir" || die "could not clear unusable cached source at '$cached_dir' before fetching llama.cpp $llama_tag."
+    fi
+    mkdir -p "$SCRIPT_DIR/.tmp" || die "could not create source cache at '$SCRIPT_DIR/.tmp' for llama.cpp $llama_tag."
+    git clone --depth 1 --branch "$llama_tag" \
+        "$LLAMA_CPP_REPOSITORY" "$cached_dir" || \
+        die "could not fetch llama.cpp $llama_tag from '$LLAMA_CPP_REPOSITORY'. Pass a local checkout via --source instead."
+    SOURCE_DIR="$cached_dir"
 }
 
 main() {
@@ -378,8 +408,10 @@ main() {
 
     [ "$DRY_RUN" = 'yes' ] && return 0
 
-    [ -f "$SOURCE_DIR/.devops/rocm.Dockerfile" ] || \
-        die "'$SOURCE_DIR/.devops/rocm.Dockerfile' not found. The build context must be a llama.cpp checkout at a tag carrying .devops/rocm.Dockerfile, which the build copies whole."
+    ensure_source_context
+
+    [ -f "$SOURCE_DIR/$UPSTREAM_DOCKERFILE_PATH" ] || \
+        die "'$SOURCE_DIR/$UPSTREAM_DOCKERFILE_PATH' not found. The build context must be a llama.cpp checkout at a tag carrying $UPSTREAM_DOCKERFILE_PATH, which the build copies whole."
 
     # The resolved keys match the ARG dialect of our Dockerfile.rocm
     # (ROCM_BASE, GPU_TARGET, ROCM_CORE_DIR, ...), not upstream's
