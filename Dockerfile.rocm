@@ -68,6 +68,10 @@ ARG GGML_CUDA_FA_QUANTS=all
 # Pass-through for additional -D flags, so an unusual build needs no edit here.
 ARG CMAKE_EXTRA_ARGS=""
 
+# Verbosity for the compile step, supplied by build-rocm.sh --verbose. Empty
+# by default (quiet build); set to --verbose to print every compile command.
+ARG CMAKE_BUILD_VERBOSE=""
+
 FROM ${ROCM_BASE} AS build
 
 # Bash with pipefail, so a configure step that fails is still a failed step.
@@ -84,6 +88,7 @@ ARG GPU_TARGET
 ARG CMAKE_BUILD_TYPE
 ARG GGML_CUDA_FA_QUANTS
 ARG CMAKE_EXTRA_ARGS
+ARG CMAKE_BUILD_VERBOSE
 
 # The CPU backend would otherwise be tuned to whichever host compiled the image,
 # since GGML_NATIVE is ON by default when not cross-compiling. Upstream's own
@@ -139,7 +144,7 @@ RUN HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
         ${CMAKE_EXTRA_ARGS} \
     2>&1 | tee /src/configure.log \
     && test -s /src/configure.log \
-    && cmake --build build --config Release -j"$(nproc)"
+    && cmake --build build --config Release -j"$(nproc)" ${CMAKE_BUILD_VERBOSE}
 
 # Record the ROCm libraries the built binaries resolve to, so the runtime stage
 # copies a known set rather than the whole multi-architecture base.

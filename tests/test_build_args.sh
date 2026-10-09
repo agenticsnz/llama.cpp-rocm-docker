@@ -361,5 +361,30 @@ else
 fi
 
 echo
+echo "== --verbose reaches docker and cmake only when requested =="
+STUB_LOG="$SCRATCH/argv-v.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" --verbose \
+    >"$SCRATCH/o12" 2>&1
+[ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
+if grep -qxF -- '<--progress=plain>' "$SCRATCH/argv-v.log" \
+    && grep -qxF -- '<CMAKE_BUILD_VERBOSE=--verbose>' "$SCRATCH/argv-v.log"; then
+    note_pass "verbose passed to docker and cmake"
+else
+    note_fail "verbose missing from docker/cmake argv"
+fi
+STUB_LOG="$SCRATCH/argv-q.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    >"$SCRATCH/o13" 2>&1
+[ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
+if grep -qxF -- '<--progress=plain>' "$SCRATCH/argv-q.log" \
+    || grep -qxF -- '<CMAKE_BUILD_VERBOSE=--verbose>' "$SCRATCH/argv-q.log"; then
+    note_fail "verbose passed without the flag"
+else
+    note_pass "verbose absent by default"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
