@@ -9,6 +9,11 @@ GPU architecture against one ROCm release, then ships a trimmed runtime: Ubuntu
 architecture needs. The ~28 GB ROCm development base used to compile is
 discarded; the published image is around 2.7 GB.
 
+It is a drop-in replacement for the official llama.cpp image and functions
+identically: the same `llama-server` entrypoint, flags, environment variables,
+and HTTP API, built from the same upstream source at the pinned tag — only
+the HIP backend is compiled for one architecture instead of many.
+
 Retargeting to another card or ROCm release means adding files under `conf/`,
 not editing the script or Dockerfile.
 
