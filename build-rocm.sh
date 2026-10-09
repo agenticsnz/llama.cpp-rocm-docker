@@ -65,6 +65,10 @@ declare -A FILE_VALUE=()
 # Later occurrences overwrite earlier ones, so the last --set for a key wins.
 declare -A CLI_VALUE=()
 
+# Keys whose pre-CLI value was adopted from the exported shell environment.
+# Lets the CLI-override warning name the shell origin when no file copy exists.
+declare -A SHELL_ADOPTED=()
+
 # Surviving values after ownership is applied.
 declare -A RESOLVED_VALUE=()
 
@@ -177,11 +181,15 @@ apply_ownership() {
 # under set -u.
 apply_shell_fallback() {
     local key shell_value
+    declare -A seen_keys=()
     for key in "${REQUIRED_KEYS[@]}" "${!KEY_AXIS[@]}"; do
+        [ -n "${seen_keys[$key]:-}" ] && continue
+        seen_keys["$key"]=1
         [ -n "${RESOLVED_VALUE[$key]:-}" ] && continue
         shell_value="${!key:-}"
         [ -n "$shell_value" ] || continue
         RESOLVED_VALUE["$key"]="$shell_value"
+        SHELL_ADOPTED["$key"]=1
         warn "key $key is absent from all three configuration files, so the exported shell value is used. Set it in a file or via --set to silence this."
     done
 }
@@ -205,7 +213,13 @@ apply_cli_overrides() {
                 [ -n "$file_value" ] || continue
                 losing_files="$losing_files '$file_path'"
             done
-            warn "key $key is set on the command line via --set, overriding$losing_files. The CLI value wins, so those copies are discarded."
+            if [ -n "$losing_files" ]; then
+                warn "key $key is set on the command line via --set, overriding$losing_files. The CLI value wins, so those copies are discarded."
+            elif [ -n "${SHELL_ADOPTED[$key]:-}" ]; then
+                warn "key $key is set on the command line via --set, overriding the exported shell value. The CLI value wins, so that copy is discarded."
+            else
+                warn "key $key is set on the command line via --set, overriding$losing_files. The CLI value wins, so those copies are discarded."
+            fi
         fi
         RESOLVED_VALUE["$key"]="$cli_value"
     done
@@ -218,7 +232,7 @@ require_keys_present() {
     local required_key
     for required_key in "${REQUIRED_KEYS[@]}"; do
         [ -n "${RESOLVED_VALUE[$required_key]:-}" ] || \
-            die "required key $required_key is absent after reading all three configuration files. The image reference or compiler target depends on it, so the build cannot proceed without it."
+            die "required key $required_key is absent after reading configuration files, shell fallback, and --set overrides. The image reference or compiler target depends on it, so the build cannot proceed without it."
     done
 }
 

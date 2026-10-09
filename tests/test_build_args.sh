@@ -198,12 +198,21 @@ echo "== malformed --set is fatal =="
     --config-env "$CONF/build-config.env" --source "$SRC" \
     --set NOEQUALS --dry-run >"$SCRATCH/s2" 2>&1
 [ $? -ne 0 ] && note_pass "bare --set rejected" || note_fail "accepted --set without ="
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --set =value --dry-run >"$SCRATCH/s2b" 2>&1
+[ $? -ne 0 ] && note_pass "empty --set key rejected" || note_fail "accepted --set with empty key"
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --dry-run --set >"$SCRATCH/s2c" 2>&1
+[ $? -ne 0 ] && note_pass "trailing --set rejected" || note_fail "accepted trailing --set without value"
 
 echo
 echo "== --set keeps value after first equals and strips key whitespace =="
 rc=$(run_dry "$SCRATCH/s3" "$SCRATCH/se3" \
     "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
     --set SOME_FUTURE_FLAG=a=b --set " GPU_TARGET =gfx1200")
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s3" "--build-arg SOME_FUTURE_FLAG=a=b"
 expect_line "$SCRATCH/s3" "--build-arg GPU_TARGET=gfx1200"
 
@@ -241,6 +250,7 @@ echo "== files beat shell and unknown exports never leak =="
 rc=$( ( export REGISTRY=shell-registry:5000 SOME_RANDOM_EXPORT=leak EMPTY_EXPORT=""
   run_dry "$SCRATCH/s6" "$SCRATCH/se6" \
     "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" ) )
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s6" "--build-arg REGISTRY=192.168.178.40:5001"
 reject_line "$SCRATCH/s6" "--build-arg REGISTRY=shell-registry:5000"
 if grep -q 'SOME_RANDOM_EXPORT\|EMPTY_EXPORT' "$SCRATCH/s6"; then
@@ -256,6 +266,15 @@ rc=$(run_dry "$SCRATCH/s7" "$SCRATCH/se7" \
     --set SOME_FUTURE_FLAG=)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 reject_line "$SCRATCH/s7" "--build-arg SOME_FUTURE_FLAG="
+
+echo
+echo "== duplicate --set last wins without warning =="
+rc=$(run_dry "$SCRATCH/s8" "$SCRATCH/se8" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    --set REGISTRY=a --set REGISTRY=b)
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/s8" "--build-arg REGISTRY=b"
+reject_line "$SCRATCH/s8" "--build-arg REGISTRY=a"
 
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
