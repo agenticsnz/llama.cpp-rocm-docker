@@ -208,5 +208,55 @@ expect_line "$SCRATCH/s3" "--build-arg SOME_FUTURE_FLAG=a=b"
 expect_line "$SCRATCH/s3" "--build-arg GPU_TARGET=gfx1200"
 
 echo
+echo "== --set satisfies a missing required key =="
+cat > "$SCRATCH/no-version.env" <<'ENV'
+ROCM_BASE=rocm/dev-ubuntu-24.04:10.1.0-full
+ROCM_BASE_ASSEMBLY=published-multiarch-image
+ROCM_CORE_DIR=/opt/rocm/core-10.1
+LD_LIBRARY_PATH=/opt/rocm/lib
+ENV
+rc=$(run_dry "$SCRATCH/s4" "$SCRATCH/se4" \
+    "$CONF/amd-gfx1200.env" "$SCRATCH/no-version.env" "$CONF/build-config.env" \
+    --set ROCM_VERSION=10.1.0)
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/s4" "--build-arg ROCM_VERSION=10.1.0"
+
+echo
+echo "== shell fallback adopted only when files omit a known key =="
+cat > "$SCRATCH/no-registry.env" <<'ENV'
+LLAMA_CPP_VERSION=v0.5.0
+VERSION=1.0.0
+CMAKE_BUILD_TYPE=Release
+GGML_NATIVE=OFF
+ENV
+rc=$( ( export REGISTRY=shell-registry:5000
+  run_dry "$SCRATCH/s5" "$SCRATCH/se5" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/no-registry.env" ) )
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/s5" "--build-arg REGISTRY=shell-registry:5000"
+expect_stderr "$SCRATCH/se5" "REGISTRY"
+
+echo
+echo "== files beat shell and unknown exports never leak =="
+rc=$( ( export REGISTRY=shell-registry:5000 SOME_RANDOM_EXPORT=leak EMPTY_EXPORT=""
+  run_dry "$SCRATCH/s6" "$SCRATCH/se6" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" ) )
+expect_line "$SCRATCH/s6" "--build-arg REGISTRY=192.168.178.40:5001"
+reject_line "$SCRATCH/s6" "--build-arg REGISTRY=shell-registry:5000"
+if grep -q 'SOME_RANDOM_EXPORT\|EMPTY_EXPORT' "$SCRATCH/s6"; then
+  note_fail "shell-only unknown keys leaked into build args"
+else
+  note_pass "unknown shell vars absent"
+fi
+
+echo
+echo "== empty --set value behaves as absent =="
+rc=$(run_dry "$SCRATCH/s7" "$SCRATCH/se7" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    --set SOME_FUTURE_FLAG=)
+[ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
+reject_line "$SCRATCH/s7" "--build-arg SOME_FUTURE_FLAG="
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

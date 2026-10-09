@@ -168,14 +168,35 @@ apply_ownership() {
     done
 }
 
+# Adopt exported shell values for known keys that no file set. Only keys in
+# REQUIRED_KEYS or KEY_AXIS are considered, so arbitrary exports never leak
+# into the build; empty exports count as unset. Each adoption is reported
+# naming the key, consistent with the other resolution warnings. Runs after
+# file ownership and before CLI overrides, so files beat the shell and --set
+# beats both. Indirect expansion uses the :- default so unset names are safe
+# under set -u.
+apply_shell_fallback() {
+    local key shell_value
+    for key in "${REQUIRED_KEYS[@]}" "${!KEY_AXIS[@]}"; do
+        [ -n "${RESOLVED_VALUE[$key]:-}" ] && continue
+        shell_value="${!key:-}"
+        [ -n "$shell_value" ] || continue
+        RESOLVED_VALUE["$key"]="$shell_value"
+        warn "key $key is absent from all three configuration files, so the exported shell value is used. Set it in a file or via --set to silence this."
+    done
+}
+
 # Apply command-line --set overrides onto the resolved values. For each --set
 # key the CLI value wins: when the files resolved a different value that value
 # is reported naming the key and the losing files, then discarded. Previously
-# unseen keys pass through unchanged, and identical values stay silent.
+# unseen keys pass through unchanged, and identical values stay silent. An
+# empty --set value counts as absent, so it neither displaces a resolved value
+# nor appears in the emitted arguments.
 apply_cli_overrides() {
     local key cli_value resolved_value file_path file_value losing_files
     for key in "${!CLI_VALUE[@]}"; do
         cli_value="${CLI_VALUE[$key]:-}"
+        [ -n "$cli_value" ] || continue
         resolved_value="${RESOLVED_VALUE[$key]:-}"
         if [ -n "$resolved_value" ] && [ "$resolved_value" != "$cli_value" ]; then
             losing_files=""
@@ -322,6 +343,7 @@ main() {
     load_configuration_file "$ROCM_ENV_PATH"
     load_configuration_file "$CONFIG_ENV_PATH"
     apply_ownership
+    apply_shell_fallback
     apply_cli_overrides
     require_keys_present
     run_consistency_checks
