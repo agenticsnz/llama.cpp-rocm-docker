@@ -93,8 +93,7 @@ readonly BASE_TAG_PATTERN='.*:([0-9][0-9.]*)(-[a-z-]*)$'
 readonly ARCH_TOKEN_PREFIX='amd-'
 readonly VERSION_TOKEN_PREFIX='amd-'
 
-# Upstream source fetched when --source is omitted. The cache layout mirrors
-# the stage tests, so a tree the tests fetched is reused here and vice versa.
+# Upstream source fetched when --source is omitted.
 readonly LLAMA_CPP_REPOSITORY='https://github.com/ggml-org/llama.cpp.git'
 readonly UPSTREAM_DOCKERFILE_PATH='.devops/rocm.Dockerfile'
 
@@ -361,14 +360,13 @@ parse_arguments() {
 }
 
 # Fetch the llama.cpp source at the resolved tag when --source was omitted.
-# A supplied --source tree is used as-is. The default tree lives in .tmp/
-# beside this script, the same cache the stage tests use, so either side
-# reuses what the other fetched. Runs after the --dry-run early return, so
-# argument resolution never touches the network.
+# A supplied --source tree is used as-is. The default tree lives in
+# llama.cpp/<tag> beside this script. Runs after the --dry-run early return,
+# so argument resolution never touches the network.
 ensure_source_context() {
     local llama_tag cached_dir
     llama_tag="${RESOLVED_VALUE[LLAMA_CPP_VERSION]}"
-    cached_dir="$SCRIPT_DIR/.tmp/llama-cpp-$llama_tag"
+    cached_dir="$SCRIPT_DIR/llama.cpp/$llama_tag"
     [ -n "$SOURCE_DIR" ] && return 0
     if [ -d "$cached_dir/.git" ] && [ -f "$cached_dir/$UPSTREAM_DOCKERFILE_PATH" ]; then
         SOURCE_DIR="$cached_dir"
@@ -377,7 +375,7 @@ ensure_source_context() {
     if [ -e "$cached_dir" ]; then
         rm -rf "$cached_dir" || die "could not clear unusable cached source at '$cached_dir' before fetching llama.cpp $llama_tag."
     fi
-    mkdir -p "$SCRIPT_DIR/.tmp" || die "could not create source cache at '$SCRIPT_DIR/.tmp' for llama.cpp $llama_tag."
+    mkdir -p "$SCRIPT_DIR/llama.cpp" || die "could not create source cache at '$SCRIPT_DIR/llama.cpp' for llama.cpp $llama_tag."
     git clone --depth 1 --branch "$llama_tag" \
         "$LLAMA_CPP_REPOSITORY" "$cached_dir" || \
         die "could not fetch llama.cpp $llama_tag from '$LLAMA_CPP_REPOSITORY'. Pass a local checkout via --source instead."

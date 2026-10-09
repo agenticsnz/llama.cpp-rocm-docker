@@ -4,6 +4,8 @@ runtime-stage.log
 
 # llama.cpp checkout the stage tests clone and cache between runs.
 .tmp/
+# llama.cpp source trees fetched by build-rocm.sh when --source is omitted.
+llama.cpp/*
 .config
 .local
 
