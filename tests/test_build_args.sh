@@ -302,6 +302,17 @@ if grep -q -- '^<--build-arg .*>' "$SCRATCH/argv.log"; then
 else
     note_pass "no fused flag elements"
 fi
+# The script builds our Dockerfile.rocm, whose ARG dialect the resolved keys
+# match (ROCM_BASE, GPU_TARGET, ...). Upstream's .devops/rocm.Dockerfile speaks
+# a different dialect (BASE_ROCM_DEV_CONTAINER, ROCM_DOCKER_ARCH) and must not
+# receive these args: it would derive a -complete tag that does not exist.
+if grep -qxF -- '<-f>' "$SCRATCH/argv.log" \
+    && grep -q -- 'Dockerfile\.rocm>$' "$SCRATCH/argv.log" \
+    && ! grep -q -- 'rocm\.Dockerfile' "$SCRATCH/argv.log"; then
+    note_pass "docker builds our Dockerfile.rocm, not upstream's"
+else
+    note_fail "docker is pointed at the wrong Dockerfile"
+fi
 
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"

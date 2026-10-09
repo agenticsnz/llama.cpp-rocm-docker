@@ -30,6 +30,10 @@ ARCH_ENV_PATH=''
 ROCM_ENV_PATH=''
 CONFIG_ENV_PATH=''
 
+# Directory holding this script, so the build can reference our Dockerfile.rocm
+# by absolute path while the build context stays the llama.cpp source tree.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Key to owning axis. A key absent from this map is not axis-specific, so it is
 # treated as neutral and passed through whichever file set it.
 declare -A KEY_AXIS=(
@@ -373,6 +377,13 @@ main() {
     [ -f "$SOURCE_DIR/.devops/rocm.Dockerfile" ] || \
         die "'$SOURCE_DIR/.devops/rocm.Dockerfile' not found. The build context must be a llama.cpp checkout at a tag carrying .devops/rocm.Dockerfile, which the build copies whole."
 
+    # The resolved keys match the ARG dialect of our Dockerfile.rocm
+    # (ROCM_BASE, GPU_TARGET, ROCM_CORE_DIR, ...), not upstream's
+    # .devops/rocm.Dockerfile (BASE_ROCM_DEV_CONTAINER, ROCM_DOCKER_ARCH).
+    # Building upstream's file with these args derives a -complete base tag
+    # that exists for no modern ROCm release, so this file is the only valid
+    # -f target. It lives beside this script while the context is the
+    # llama.cpp tree, hence the absolute -f with a separate context dir.
     local -a build_arguments=()
     local resolved_key
     for resolved_key in $(printf '%s\n' "${!RESOLVED_VALUE[@]}" | sort); do
@@ -380,9 +391,8 @@ main() {
     done
     build_arguments+=(--tag "$image_reference:${RESOLVED_VALUE[VERSION]}")
     build_arguments+=(--tag "$image_reference:$TAG_LATEST")
-    build_arguments+=(-f .devops/rocm.Dockerfile .)
+    build_arguments+=(-f "$SCRIPT_DIR/Dockerfile.rocm" "$SOURCE_DIR")
 
-    cd "$SOURCE_DIR" || die "cannot change into source tree '$SOURCE_DIR': the build copies the whole tree as its context."
     docker build "${build_arguments[@]}" || die "docker build failed for '$image_reference'. The build log above names the failing step."
 }
 
