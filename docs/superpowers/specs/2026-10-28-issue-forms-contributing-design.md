@@ -69,14 +69,18 @@ From the user:
   axes
 - Build instructions live in a separate local build guide linked from README
   and CONTRIBUTING
+- Valid issue labels: `bug`, `enhancement`, `infrastructure`, `add-targets`
 
 My calls (not yet agreed):
 
 - Filenames with number prefixes to fix chooser order:
   `01-bug-report.yml`, `02-bug-report-platform.yml`,
   `03-feature-request.yml`, `04-support-request.yml`
-- Title prefixes `[Bug]: `, `[Feature]: `, `[Support]: `; labels `bug` on
-  bug forms, `enhancement` on feature/support forms
+- Title prefixes `[Bug]: `, `[Feature]: `, `[Support]: `
+- Form label defaults: `bug` on both bug forms, `enhancement` on the feature
+  form, `add-targets` on the support form; `infrastructure` is applied by
+  maintainers during triage and is available to blank issues, so no form
+  carries it by default
 - Build guide at `docs/local-build-guide.md` (kebab-case, `docs/` alongside
   existing project docs)
 - README split: Prerequisites, Building, The resulting image, and Tests move
@@ -100,10 +104,11 @@ From the user:
 My calls:
 
 - `VERSION` increments its last component (`1.1.0` → `1.1.1`)
-- `[label]` is the issue's applied label, lowercase: `bug` for either bug
-  form, `enhancement` for the feature and support forms
+- `[label]` is the issue's applied label, one of `bug`, `enhancement`,
+  `infrastructure`, `add-targets`
 - `[short-description-kebab-case]` is 3-5 kebab-case words derived from the
-  issue title, e.g. `bug/issue-42-container-toolkit-not-detected`
+  issue title, e.g. `bug/issue-42-container-toolkit-not-detected` or
+  `add-targets/issue-88-add-gfx90a-target`
 - Every branch names an issue, so an issue exists before branching — which
   also covers the support issue-before-PR gate
 
