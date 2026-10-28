@@ -112,12 +112,14 @@ My calls:
 - Every branch names an issue, so an issue exists before branching — which
   also covers the support issue-before-PR gate
 
-Open question:
+Scope decision:
 
-- Whether a content change to `conf/*.env` or `build-rocm.sh` at unchanged
-  axis versions also bumps `VERSION`. Under the stated rule the name and the
-  version both stay identical, so the next build would overwrite an
-  already-published versioned tag with different contents.
+- Document the trigger verbatim: `VERSION` iterates when `Dockerfile.rocm`
+  changes, and the image name follows the axis versions as it does today.
+  Externalising `VERSION` from `conf/build-config.env` is acknowledged as
+  needed but is part of a separate issue and out of scope here; the
+  same-tag overwrite case raised against this rule is deferred to that
+  issue.
 
 ## What's left to the builder
 
