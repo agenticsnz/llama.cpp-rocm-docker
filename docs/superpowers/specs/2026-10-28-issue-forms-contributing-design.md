@@ -85,6 +85,35 @@ My calls (not yet agreed):
 - `CONTRIBUTING.md` at the repo root
 - No `config.yml` and no PR template
 
+## Versioning and branch naming
+
+From the user:
+
+- The image name continues to follow the versions from the axes, exactly as
+  today: `build-rocm.sh` composes
+  `REGISTRY/agenticsnz/llama.cpp-<LLAMA_CPP_VERSION>-amd-<ROCM_VERSION>-<ARCH_STRING>`
+  and tags it `<VERSION>` plus `latest`
+- The image version (`VERSION` in `conf/build-config.env`) iterates when
+  `Dockerfile.rocm` changes; CONTRIBUTING states both conditions
+- Branch names follow `[label]/issue-[#]-[short-description-kebab-case]`
+
+My calls:
+
+- `VERSION` increments its last component (`1.1.0` → `1.1.1`)
+- `[label]` is the issue's applied label, lowercase: `bug` for either bug
+  form, `enhancement` for the feature and support forms
+- `[short-description-kebab-case]` is 3-5 kebab-case words derived from the
+  issue title, e.g. `bug/issue-42-container-toolkit-not-detected`
+- Every branch names an issue, so an issue exists before branching — which
+  also covers the support issue-before-PR gate
+
+Open question:
+
+- Whether a content change to `conf/*.env` or `build-rocm.sh` at unchanged
+  axis versions also bumps `VERSION`. Under the stated rule the name and the
+  version both stay identical, so the next build would overwrite an
+  already-published versioned tag with different contents.
+
 ## What's left to the builder
 
 - Exact field wording and structure of each form per GitHub's form schema
