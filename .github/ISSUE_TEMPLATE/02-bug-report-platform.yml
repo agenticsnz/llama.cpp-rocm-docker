@@ -1,0 +1,81 @@
+name: Platform bug report
+description: A bug against a specific ROCm, GPU, architecture and llama.cpp combination
+title: "[Bug]: "
+labels: [bug]
+body:
+  - id: rocm-version
+    type: input
+    attributes:
+      label: ROCm version
+      description: The ROCm release the image was built against, e.g. 7.14.1.
+    validations:
+      required: true
+  - id: gpu
+    type: input
+    attributes:
+      label: GPU
+      description: The GPU card target, e.g. gfx1200.
+    validations:
+      required: true
+  - id: arch
+    type: input
+    attributes:
+      label: Arch
+      description: The architecture string from the image tag, e.g. gfx1200 or RDNA4.
+    validations:
+      required: true
+  - id: llama-cpp-version
+    type: input
+    attributes:
+      label: llama.cpp version
+      description: The llama.cpp tag the image was built from, e.g. v0.5.0.
+    validations:
+      required: true
+  - id: symptoms
+    type: textarea
+    attributes:
+      label: Symptoms
+      description: What happens, what you expected to happen, and how the failure shows itself.
+    validations:
+      required: true
+  - id: os
+    type: input
+    attributes:
+      label: OS
+      description: The host operating system and version, e.g. Ubuntu 24.04.
+    validations:
+      required: true
+  - id: docker-runtime
+    type: input
+    attributes:
+      label: Docker runtime
+      description: The container runtime used to launch the image, e.g. Docker Engine or Podman — free text, so any runtime is accepted.
+    validations:
+      required: true
+  - id: docker-runtime-version
+    type: input
+    attributes:
+      label: Docker runtime version
+      description: The runtime's version string, e.g. 27.3.1.
+    validations:
+      required: true
+  - id: reproduction-steps
+    type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands and configuration used to reach the failure.
+    validations:
+      required: true
+  - id: logs
+    type: upload
+    attributes:
+      label: Log file
+      description: The full output of the failing run, attached as a file. If the upload fails, attach the file in the issue timeline after submitting.
+    validations:
+      required: true
+      accept: .log,.txt,.gz
+  - id: logs-excerpt
+    type: textarea
+    attributes:
+      label: Log excerpt
+      description: A short paste of the most relevant lines, if it helps — the attached file remains the required evidence.

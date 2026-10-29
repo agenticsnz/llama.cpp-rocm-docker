@@ -156,6 +156,70 @@ echo "== the log excerpt textarea is optional =="
 expect_field "$BUG" logs-excerpt textarea
 expect_field_optional "$BUG" logs-excerpt
 
+# == Task 2: the platform bug form ==
+
+PLATFORM="$FORMS/02-bug-report-platform.yml"
+
+echo
+echo "== 02-bug-report-platform.yml exists and is chooser-valid =="
+if [ -f "$PLATFORM" ]; then note_pass "02-bug-report-platform.yml exists"
+else note_fail "02-bug-report-platform.yml is missing"; fi
+expect_front_matter "$PLATFORM"
+expect_labels "$PLATFORM" bug
+expect_title_prefix "$PLATFORM" "[Bug]: "
+
+echo
+echo "== platform axes are free text and required =="
+# Scenario: Platform bug form accepts free-text axis values, and rejects a
+# submission missing an axis. Each axis is an input with no options list, so
+# any combination is accepted, and required, so GitHub blocks an empty one.
+for axis_id in rocm-version gpu arch llama-cpp-version; do
+    expect_field "$PLATFORM" "$axis_id" input
+    expect_free_text "$PLATFORM" "$axis_id"
+    expect_field_required "$PLATFORM" "$axis_id"
+done
+
+echo
+echo "== platform bug report mandates its report fields =="
+# Scenario: Platform bug form rejects a submission without symptoms. GitHub
+# blocks the submission until every required field is filled, so requiring
+# symptoms, the three runtime detail fields, reproduction steps and the log
+# upload is exactly that scenario.
+expect_field "$PLATFORM" symptoms textarea
+expect_field_required "$PLATFORM" symptoms
+for runtime_id in os docker-runtime docker-runtime-version; do
+    expect_field "$PLATFORM" "$runtime_id" input
+    expect_free_text "$PLATFORM" "$runtime_id"
+    expect_field_required "$PLATFORM" "$runtime_id"
+done
+expect_field "$PLATFORM" reproduction-steps textarea
+expect_field_required "$PLATFORM" reproduction-steps
+expect_field "$PLATFORM" logs upload
+expect_field_required "$PLATFORM" logs
+expect_accepts_logs "$PLATFORM" logs
+expect_fallback_note "$PLATFORM" logs
+
+echo
+echo "== the platform log excerpt textarea is optional =="
+# Scenario: The log excerpt textarea is optional on both bug forms (platform
+# half; the general half is checked in Task 1).
+expect_field "$PLATFORM" logs-excerpt textarea
+expect_field_optional "$PLATFORM" logs-excerpt
+
+echo
+echo "== a complete bug report is accepted on both bug forms =="
+# Scenario: A complete bug report is accepted on both bug forms. GitHub blocks
+# submission until every required field is filled, so requiring all the
+# mandated fields on both forms is exactly that scenario.
+for bug_form in "$BUG" "$PLATFORM"; do
+    for report_id in symptoms reproduction-steps logs; do
+        expect_field_required "$bug_form" "$report_id"
+    done
+    for runtime_id in os docker-runtime docker-runtime-version; do
+        expect_field_required "$bug_form" "$runtime_id"
+    done
+done
+
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
