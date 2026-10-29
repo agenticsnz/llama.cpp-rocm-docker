@@ -220,6 +220,29 @@ for bug_form in "$BUG" "$PLATFORM"; do
     done
 done
 
+# == Task 3: the feature request form ==
+
+FEATURE="$FORMS/03-feature-request.yml"
+
+echo
+echo "== 03-feature-request.yml exists and is chooser-valid =="
+if [ -f "$FEATURE" ]; then note_pass "03-feature-request.yml exists"
+else note_fail "03-feature-request.yml is missing"; fi
+expect_front_matter "$FEATURE"
+expect_labels "$FEATURE" enhancement
+expect_title_prefix "$FEATURE" "[Feature]: "
+
+echo
+echo "== feature request mandates description, improvement and a suggestion =="
+# Scenario: Feature request rejects a submission without an implementation
+# suggestion; a complete request fills all three fields.
+expect_field "$FEATURE" description textarea
+expect_field_required "$FEATURE" description
+expect_field "$FEATURE" improvement textarea
+expect_field_required "$FEATURE" improvement
+expect_field "$FEATURE" implementation-suggestion textarea
+expect_field_required "$FEATURE" implementation-suggestion
+
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
