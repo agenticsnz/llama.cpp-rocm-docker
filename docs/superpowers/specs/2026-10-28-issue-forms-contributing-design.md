@@ -57,6 +57,7 @@ Standardize issue intake and write down the contribution workflow for llama.cpp-
 - CONTRIBUTING may live in root, `docs/`, or `.github/`; GitHub surfaces it on new-issue and new-PR pages ([Setting guidelines for repository contributors](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors))
 - Markdown filenames in kebab-case
 - Issue forms must land on the default branch to be active
+- GitHub's form schema provides an `upload` element for file attachments, accepting text files (`.log`, `.txt`) and archives (`.gz`) up to 25 MB, with `required` and `accept` validations; the schema is marked public preview, so the logs field carries a fallback line telling contributors to attach the file in the issue timeline instead ([Syntax for GitHub's form schema](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-githubs-form-schema), "`upload`")
 
 ## Approaches considered
 
@@ -67,6 +68,8 @@ Standardize issue intake and write down the contribution workflow for llama.cpp-
 | 3 | Full CONTRIBUTING + extracted local build guide linked from both | One home for build detail; both docs point at it | **Chosen** (user's decision) |
 
 Axis field style: dropdowns listing current `conf/` combinations would enforce consistency but go stale as configs land; free-text accepts any combination with no upkeep. **Free text** (user's decision, "for now").
+
+Runtime detail field style: an enumerated Docker Runtime dropdown (Docker Desktop, Docker Engine, Podman, Rancher Desktop, Colima, containerd/nerdctl, Finch, Kubernetes, Other) would normalize the values for triage but needs upkeep as tools come and go. **Free text** (user's decision, after being shown the enumeration — consistent with the four axes staying free text).
 
 ## Decisions
 
@@ -82,28 +85,35 @@ From the user:
     Then the submission is blocked and llama.cpp version is marked required
   ```
 
-- Both bug forms must require: symptoms, user runtime details (OS, Docker runtime, Docker version, etc.), steps to reproduce, logs
+- Both bug forms must require: symptoms, runtime details as three separate free-text fields (OS, Docker Runtime, Docker Runtime Version), steps to reproduce, and a log file attachment; an optional textarea lets contributors paste a short excerpt of the same logs for at-a-glance reading
 
   **Both bug forms enforce the mandated report fields**
   ```gherkin
-  Scenario: General bug form rejects a submission without logs
+  Scenario: General bug form rejects a submission without a log file
     Given the general bug form
-    When a contributor submits it with symptoms, runtime details and reproduction steps filled but logs empty
-    Then the submission is blocked and logs is marked required
+    When a contributor submits it with symptoms, the three runtime detail fields and reproduction steps filled but no log file attached
+    Then the submission is blocked and the log file attachment is marked required
   ```
 
   ```gherkin
   Scenario: Platform bug form rejects a submission without symptoms
     Given the platform bug form
-    When a contributor submits it with runtime details, reproduction steps and logs filled but symptoms empty
+    When a contributor submits it with the three runtime detail fields, reproduction steps and a log file attached but symptoms empty
     Then the submission is blocked and symptoms is marked required
   ```
 
   ```gherkin
   Scenario: A complete bug report is accepted on both bug forms
     Given the general bug form and the platform bug form
-    When a contributor fills symptoms, runtime details, reproduction steps and logs
-    Then both forms accept the submission because all four mandated fields are present and required
+    When a contributor fills symptoms, the three runtime detail fields and reproduction steps, and attaches a log file
+    Then both forms accept the submission because all mandated fields are present and required
+  ```
+
+  ```gherkin
+  Scenario: The log excerpt textarea is optional on both bug forms
+    Given the general bug form and the platform bug form
+    When a contributor submits a report with the log file attached but the excerpt textarea left empty
+    Then both forms accept the submission because the excerpt is not required
   ```
 
 - Feature form must require: detailed description, what it improves, at least one implementation suggestion
@@ -123,7 +133,7 @@ From the user:
     Then the form accepts the submission because all three mandated fields are present and required
   ```
 
-- Support form must require: the four axes, evidence as llama.cpp logs run with the verbose flag showing startup on the target platform, and an acknowledgement of the issue-before-PR rule
+- Support form must require: the four axes, evidence as an attached llama-server log file produced with the verbose flag showing startup on the target platform (same `upload` element as the bug forms, with the same optional paste-excerpt textarea), and an acknowledgement of the issue-before-PR rule
 
   **Support form enforces axes, evidence and acknowledgement**
   ```gherkin
@@ -136,8 +146,8 @@ From the user:
   ```gherkin
   Scenario: Support request rejects a submission without evidence
     Given the support request form
-    When a contributor submits it with every field except the evidence log filled
-    Then the submission is blocked and evidence is marked required
+    When a contributor submits it with every field except the evidence log file attachment filled
+    Then the submission is blocked and the evidence log file attachment is marked required
   ```
 
   ```gherkin
@@ -204,6 +214,7 @@ My calls:
   ```
 
 - Title prefixes `[Bug]: `, `[Feature]: `, `[Support]: `
+- Log fields use the `upload` element with `required: true` and an `accept` list covering `.log`, `.txt` and `.gz`; each logs/evidence upload carries a description fallback ("if the upload fails, attach the file in the issue timeline after submitting"); the optional excerpt textarea on the bug forms is not required anywhere
 - Form label defaults: `bug` on both bug forms, `enhancement` on the feature form, `add-targets` on the support form; `infrastructure` is applied by maintainers during triage and is available to blank issues, so no form carries it by default
 
   **Each form applies its assigned label and title prefix**
