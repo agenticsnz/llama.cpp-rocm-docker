@@ -69,85 +69,16 @@ axis. The other copy is reported and discarded.
 | `VERSION` | Image version tag published alongside `latest` |
 | `GGML_NATIVE` | `OFF`, so the CPU backend is not tuned to the build host |
 
-## Prerequisites
+## Building locally
 
-- Docker with Compose v2
-- The **AMD Container Toolkit**, so `docker` exposes the GPU
-- An amdgpu host driver on 30.x or 31.x (ROCm release numbers and amdgpu
-  driver numbers are separate schemes)
-- A llama.cpp source checkout is fetched automatically at the tag named by
-  `LLAMA_CPP_VERSION` (cached under `llama.cpp/<tag>/`).
-  Pass `--source /path/to/llama.cpp` to build from a local tree instead.
+Prerequisites, the build procedure, the resulting image and the test
+suites are covered in the [local build guide](docs/local-build-guide.md).
 
-## Building
+## Contributing
 
-All three configuration files are required. The script rejects a partial
-invocation rather than guessing which axis was meant. The source tree is
-fetched automatically; `--source` is only needed for a local checkout:
-
-```bash
-./build-rocm.sh \
-  --arch-env conf/amd-gfx1200.env \
-  --rocm-env conf/amd-7.14.1.env \
-  --config-env conf/build-config.env
-```
-
-```bash
-./build-rocm.sh \
-  --arch-env conf/amd-gfx1200.env \
-  --rocm-env conf/amd-7.14.1.env \
-  --config-env conf/build-config.env \
-  --source /path/to/llama.cpp
-```
-
-To check how the arguments resolve without paying for a build, add `--dry-run`.
-It prints the resolved `docker build` argument vector and exits without
-invoking docker. `--no-cache` and `--verbose` are also supported; `--set
-KEY=VALUE` (repeatable) overrides any resolved key.
-
-### The resulting image
-
-One build produces two tags. Deploy the versioned one: `latest` is overwritten
-by the next build.
-
-```
-ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.1.0
-ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:latest
-```
-
-The image runs `llama-server` on port 8080 by default (`LLAMA_ARG_HOST` /
-`LLAMA_ARG_PORT`) with a `/health` healthcheck.
-
-## Tests
-
-Three suites, each in `tests/`. Run them from the repository root.
-
-```bash
-bash tests/test_build_args.sh
-bash tests/test_build_stage.sh
-bash tests/test_runtime_stage.sh
-```
-
-`test_build_args.sh` verifies argument resolution through `--dry-run` — the
-ownership, collision and warning rules — without invoking docker. It is fast
-and needs no daemon.
-
-`test_build_stage.sh` clones llama.cpp at the pinned tag, performs one real
-build of the build stage, and asserts the HIP toolchain was found,
-FlashAttention coverage is exactly the 49 combinations of the seven supported
-K/V types, both artefacts exist, and the library closure resolves. It takes
-several minutes and caches the checkout under `.tmp/`.
-
-`test_runtime_stage.sh` builds the runtime stage and verifies the image is
-self-contained: the loader resolves every library, the GPU is reported at run
-time, and trimming removed other architectures' kernels without removing this
-one's. It needs an AMD GPU visible to the docker daemon.
-
-An image missing its ROCm libraries still starts, still reports the GPU through
-`amd-smi`, and still passes a naive healthcheck — while exposing no compute
-device at all. `llama-server --list-devices` is the check that distinguishes
-those two images, and it is why the runtime suite refuses to skip when no GPU
-is present.
+Bug reports, feature requests and add-support requests go through the issue
+forms; the full workflow — labels, branch naming, new build targets,
+versioning — is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
