@@ -4,15 +4,17 @@ Date: 2026-10-28
 
 ## Intent
 
-Standardize issue intake and write down the contribution workflow for llama.cpp-rocm-docker. The repo currently has no issue templates and no CONTRIBUTING file, so the rule "a support issue must exist before a PR merging config files for that combination" has no home, and issue reports arrive in whatever shape the reporter chooses.
+Standardize issue intake and write down the contribution workflow for llama.cpp-rocm-docker. The repo currently has no issue templates and no CONTRIBUTING file, so the rule "an add-support issue must exist before a PR merging config files for that combination" has no home, and issue reports arrive in whatever shape the reporter chooses.
 
 ## Goals
 
-- Four YAML issue forms in `.github/ISSUE_TEMPLATE/`:
-  1. Platform bug — bug against a specific ROCm / GPU / Arch / llama.cpp combination
-  2. General bug — bug not tied to a particular combination
+- Six YAML issue forms in `.github/ISSUE_TEMPLATE/`:
+  1. General bug — bug not tied to a particular combination
+  2. Platform bug — bug against a specific ROCm / GPU / Arch / llama.cpp combination
   3. Feature request — not tied to a particular combination
-  4. Support request — new platform combination, with evidence and the issue-before-PR rule
+  4. Add hardware support — new GPU / Arch target, with evidence and the issue-before-PR rule
+  5. Add ROCm version — new ROCm version target, with evidence and the issue-before-PR rule
+  6. Add llama.cpp version — new llama.cpp version target, with evidence and the issue-before-PR rule
 - `CONTRIBUTING.md` in the repo root: full contribution guide (scope B), including the process for submitting new axes for the build
 - A separate local build guide, linked from both README and CONTRIBUTING, as the single home for local build instructions
 
@@ -49,7 +51,7 @@ Standardize issue intake and write down the contribution workflow for llama.cpp-
   **Chooser-valid front matter on every form**
   ```gherkin
   Scenario: Every form carries front matter the chooser accepts
-    Given the four files in .github/ISSUE_TEMPLATE
+    Given the six files in .github/ISSUE_TEMPLATE
     When the template chooser loads them
     Then each file declares a name of more than three characters and a description
   ```
@@ -57,6 +59,7 @@ Standardize issue intake and write down the contribution workflow for llama.cpp-
 - CONTRIBUTING may live in root, `docs/`, or `.github/`; GitHub surfaces it on new-issue and new-PR pages ([Setting guidelines for repository contributors](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors))
 - Markdown filenames in kebab-case
 - Issue forms must land on the default branch to be active
+- A template's `title:` prefix is static front matter on the form file, fixed before the reporter sees the form; an in-body dropdown cannot change it, so per-category prefixes require separate form files ([Configuring issue templates for your repository, step 7 and example YAML](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository))
 - GitHub's form schema provides an `upload` element for file attachments, accepting text files (`.log`, `.txt`) and archives (`.gz`) up to 25 MB, with `required` and `accept` validations; the schema is marked public preview, so the logs field carries a fallback line telling contributors to attach the file in the issue timeline instead ([Syntax for GitHub's form schema](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-githubs-form-schema), "`upload`")
 
 ## Approaches considered
@@ -66,6 +69,8 @@ Standardize issue intake and write down the contribution workflow for llama.cpp-
 | 1 | Narrow CONTRIBUTING (workflow only) | Lean, but leaves no full guide | Rejected — user chose scope B |
 | 2 | Full CONTRIBUTING duplicating README build detail | Complete entry point, but two copies of build instructions drift | Rejected |
 | 3 | Full CONTRIBUTING + extracted local build guide linked from both | One home for build detail; both docs point at it | **Chosen** (user's decision) |
+| 4 | Single support form with an in-body category dropdown (Add Hardware Support / Add ROCm Version / Add llama.cpp Version) | Chooser stays lean, but title prefixes are static per file so every issue shares one prefix | Rejected — per-category prefixes were wanted |
+| 5 | Split add-support forms, one per category, each with its own static prefix and only its relevant axes | Prefix carries the category at a glance; cost is three chooser entries and repeated evidence/acknowledgement fields | **Chosen** (user's decision, "Split, per 2. Actual target to add is free text.") |
 
 Axis field style: dropdowns listing current `conf/` combinations would enforce consistency but go stale as configs land; free-text accepts any combination with no upkeep. **Free text** (user's decision, "for now").
 
@@ -133,34 +138,48 @@ From the user:
     Then the form accepts the submission because all three mandated fields are present and required
   ```
 
-- Support form must require: the four axes, evidence as an attached llama-server log file produced with the verbose flag showing startup on the target platform (same `upload` element as the bug forms, with the same optional paste-excerpt textarea), and an acknowledgement of the issue-before-PR rule
+- Each add-support form must require: its relevant axes, evidence as an attached llama-server log file produced with the verbose flag showing startup on the target platform (same `upload` element as the bug forms, with the same optional paste-excerpt textarea), and an acknowledgement of the issue-before-PR rule. The three forms ask only the axes their category needs: add-hardware-support asks GPU and Arch, add-rocm-version asks the ROCm version, add-llama-cpp-version asks the llama.cpp version; the specific target being added is free text in each
 
-  **Support form enforces axes, evidence and acknowledgement**
+  **Add-support forms enforce their relevant axes, evidence and acknowledgement**
   ```gherkin
-  Scenario: Support request rejects a submission missing an axis
-    Given the support request form
+  Scenario: Add-hardware-support rejects a submission missing an axis
+    Given the add-hardware-support form
     When a contributor submits it with the GPU field empty
     Then the submission is blocked and GPU is marked required
   ```
 
   ```gherkin
-  Scenario: Support request rejects a submission without evidence
-    Given the support request form
-    When a contributor submits it with every field except the evidence log file attachment filled
+  Scenario: Add-rocm-version rejects a submission missing the ROCm version
+    Given the add-rocm-version form
+    When a contributor submits it with the ROCm version field empty
+    Then the submission is blocked and ROCm version is marked required
+  ```
+
+  ```gherkin
+  Scenario: Add-llama-cpp-version rejects a submission missing the llama.cpp version
+    Given the add-llama-cpp-version form
+    When a contributor submits it with the llama.cpp version field empty
+    Then the submission is blocked and llama.cpp version is marked required
+  ```
+
+  ```gherkin
+  Scenario: Add-support forms reject a submission without evidence
+    Given the add-hardware-support form, the add-rocm-version form and the add-llama-cpp-version form
+    When a contributor submits one with every field except the evidence log file attachment filled
     Then the submission is blocked and the evidence log file attachment is marked required
   ```
 
   ```gherkin
-  Scenario: Support request rejects a submission without acknowledgement
-    Given the support request form
-    When a contributor submits it with the issue-before-PR acknowledgement unchecked
+  Scenario: Add-support forms reject a submission without acknowledgement
+    Given the add-hardware-support form, the add-rocm-version form and the add-llama-cpp-version form
+    When a contributor submits one with the issue-before-PR acknowledgement unchecked
     Then the submission is blocked because the acknowledgement option is required
   ```
 
   ```gherkin
-  Scenario: A complete support request with verbose startup evidence is accepted
-    Given the support request form
-    When a contributor fills the four axes, attaches llama-server startup logs produced with the verbose flag, and checks the acknowledgement
+  Scenario: A complete add-support request with verbose startup evidence is accepted
+    Given the add-hardware-support form, the add-rocm-version form and the add-llama-cpp-version form
+    When a contributor fills the form's relevant axes, attaches llama-server startup logs produced with the verbose flag, and checks the acknowledgement
     Then the form accepts the submission
   ```
 
@@ -171,14 +190,14 @@ From the user:
   Scenario: CONTRIBUTING states the issue-before-PR gate
     Given CONTRIBUTING.md at the repository root
     When a contributor plans a pull request adding conf files for a new combination
-    Then CONTRIBUTING states that a support request issue must exist before that pull request is opened
+    Then CONTRIBUTING states that an add-support request issue must exist before that pull request is opened
   ```
 
   ```gherkin
   Scenario: CONTRIBUTING outlines how to submit new axes
     Given CONTRIBUTING.md at the repository root
     When a contributor reads the section on submitting new axes
-    Then it lists the three config files (--arch-env, --rocm-env, --config-env) and the support issue that must precede the pull request
+    Then it lists the three config files (--arch-env, --rocm-env, --config-env) and the add-support issue that must precede the pull request
   ```
 
 - Build instructions live in a separate local build guide linked from README and CONTRIBUTING
@@ -203,19 +222,19 @@ From the user:
 
 My calls:
 
-- Filenames with number prefixes to fix chooser order: `01-bug-report.yml`, `02-bug-report-platform.yml`, `03-feature-request.yml`, `04-support-request.yml`
+- Filenames with number prefixes to fix chooser order: `01-bug-report.yml`, `02-bug-report-platform.yml`, `03-feature-request.yml`, `04-add-hardware-support.yml`, `05-add-rocm-version.yml`, `06-add-llama-cpp-version.yml`
 
   **Chooser order follows the numeric prefixes**
   ```gherkin
   Scenario: The chooser lists the forms in numeric order
-    Given the four form files in .github/ISSUE_TEMPLATE
+    Given the six form files in .github/ISSUE_TEMPLATE
     When the template chooser renders them
-    Then they appear as general bug, platform bug, feature request, support request
+    Then they appear as general bug, platform bug, feature request, add hardware support, add ROCm version, add llama.cpp version
   ```
 
-- Title prefixes `[Bug]: `, `[Feature]: `, `[Support]: `
+- Title prefixes `[Bug]: `, `[Feature]: `, `[Add Hardware]: `, `[Add ROCm]: `, `[Add llama.cpp]: ` — static per form file, so the add-support split is what gives each category its own prefix
 - Log fields use the `upload` element with `required: true` and an `accept` list covering `.log`, `.txt` and `.gz`; each logs/evidence upload carries a description fallback ("if the upload fails, attach the file in the issue timeline after submitting"); the optional excerpt textarea on the bug forms is not required anywhere
-- Form label defaults: `bug` on both bug forms, `enhancement` on the feature form, `add-targets` on the support form; `infrastructure` is applied by maintainers during triage and is available to blank issues, so no form carries it by default
+- Form label defaults: `bug` on both bug forms, `enhancement` on the feature form, `add-targets` on all three add-support forms; `infrastructure` is applied by maintainers during triage and is available to blank issues, so no form carries it by default
 
   **Each form applies its assigned label and title prefix**
   ```gherkin
@@ -233,10 +252,24 @@ My calls:
   ```
 
   ```gherkin
-  Scenario: The support form applies the add-targets label and title prefix
-    Given the support request form
+  Scenario: The add-hardware-support form applies the add-targets label and title prefix
+    Given the add-hardware-support form
     When an issue is created from it
-    Then it carries the label add-targets and the title begins with "[Support]: "
+    Then it carries the label add-targets and the title begins with "[Add Hardware]: "
+  ```
+
+  ```gherkin
+  Scenario: The add-rocm-version form applies the add-targets label and title prefix
+    Given the add-rocm-version form
+    When an issue is created from it
+    Then it carries the label add-targets and the title begins with "[Add ROCm]: "
+  ```
+
+  ```gherkin
+  Scenario: The add-llama-cpp-version form applies the add-targets label and title prefix
+    Given the add-llama-cpp-version form
+    When an issue is created from it
+    Then it carries the label add-targets and the title begins with "[Add llama.cpp]: "
   ```
 
 - Build guide at `docs/local-build-guide.md` (kebab-case, `docs/` alongside existing project docs)
@@ -283,7 +316,7 @@ My calls:
 - `VERSION` increments its last component (`1.1.0` → `1.1.1`)
 - `[label]` is the issue's applied label, one of `bug`, `enhancement`, `infrastructure`, `add-targets`
 - `[short-description-kebab-case]` is 3-5 kebab-case words derived from the issue title, e.g. `bug/issue-42-container-toolkit-not-detected` or `add-targets/issue-88-add-gfx90a-target`
-- Every branch names an issue, so an issue exists before branching — which also covers the support issue-before-PR gate
+- Every branch names an issue, so an issue exists before branching — which also covers the add-support issue-before-PR gate
 
 Scope decision:
 
