@@ -1,0 +1,53 @@
+name: Bug report
+description: A bug that is not tied to a particular ROCm, GPU, architecture or llama.cpp combination
+title: "[Bug]: "
+labels: [bug]
+body:
+  - id: symptoms
+    type: textarea
+    attributes:
+      label: Symptoms
+      description: What happens, what you expected to happen, and how the failure shows itself.
+    validations:
+      required: true
+  - id: os
+    type: input
+    attributes:
+      label: OS
+      description: The host operating system and version, e.g. Ubuntu 24.04.
+    validations:
+      required: true
+  - id: docker-runtime
+    type: input
+    attributes:
+      label: Docker runtime
+      description: The container runtime used to launch the image, e.g. Docker Engine or Podman — free text, so any runtime is accepted.
+    validations:
+      required: true
+  - id: docker-runtime-version
+    type: input
+    attributes:
+      label: Docker runtime version
+      description: The runtime's version string, e.g. 27.3.1.
+    validations:
+      required: true
+  - id: reproduction-steps
+    type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands and configuration used to reach the failure.
+    validations:
+      required: true
+  - id: logs
+    type: upload
+    attributes:
+      label: Log file
+      description: The full output of the failing run, attached as a file. If the upload fails, attach the file in the issue timeline after submitting.
+    validations:
+      required: true
+      accept: .log,.txt,.gz
+  - id: logs-excerpt
+    type: textarea
+    attributes:
+      label: Log excerpt
+      description: A short paste of the most relevant lines, if it helps — the attached file remains the required evidence.
