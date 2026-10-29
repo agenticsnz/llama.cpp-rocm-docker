@@ -243,6 +243,105 @@ expect_field_required "$FEATURE" improvement
 expect_field "$FEATURE" implementation-suggestion textarea
 expect_field_required "$FEATURE" implementation-suggestion
 
+# == Task 4: the three add-support forms and the chooser ==
+
+HARDWARE="$FORMS/04-add-hardware-support.yml"
+ROCM="$FORMS/05-add-rocm-version.yml"
+LLAMACPP="$FORMS/06-add-llama-cpp-version.yml"
+
+echo
+echo "== each add-support form exists and is chooser-valid =="
+for add_form in "$HARDWARE" "$ROCM" "$LLAMACPP"; do
+    if [ -f "$add_form" ]; then note_pass "$(basename "$add_form") exists"
+    else note_fail "$(basename "$add_form") is missing"; fi
+    expect_front_matter "$add_form"
+    expect_labels "$add_form" add-targets
+done
+# Each category's prefix is static front matter on its own form file.
+expect_title_prefix "$HARDWARE" "[Add Hardware]: "
+expect_title_prefix "$ROCM" "[Add ROCm]: "
+expect_title_prefix "$LLAMACPP" "[Add llama.cpp]: "
+
+echo
+echo "== each add-support form asks its relevant axes, free text and required =="
+# Scenario: Add-hardware-support rejects a submission missing an axis;
+# add-rocm-version rejects a submission missing the ROCm version;
+# add-llama-cpp-version rejects a submission missing the llama.cpp version.
+# Each form carries only the axes its category needs; the target being added
+# is free text in the axis field itself.
+check_axes() {
+    local add_form="$1"; shift
+    local axis_id
+    for axis_id in "$@"; do
+        expect_field "$add_form" "$axis_id" input
+        expect_free_text "$add_form" "$axis_id"
+        expect_field_required "$add_form" "$axis_id"
+    done
+}
+check_axes "$HARDWARE" gpu arch
+check_axes "$ROCM" rocm-version
+check_axes "$LLAMACPP" llama-cpp-version
+
+echo
+echo "== each add-support form requires verbose startup evidence =="
+# Scenario: Add-support forms reject a submission without evidence. Evidence
+# is llama.cpp logs produced with the verbose flag showing startup on the
+# target platform, attached as a file; the description must name the verbose
+# flag and the timeline fallback. The excerpt stays optional everywhere.
+for add_form in "$HARDWARE" "$ROCM" "$LLAMACPP"; do
+    expect_field "$add_form" evidence upload
+    expect_field_required "$add_form" evidence
+    expect_accepts_logs "$add_form" evidence
+    expect_fallback_note "$add_form" evidence
+    if [ -n "$(field_block "$add_form" evidence | grep -i 'verbose')" ]; then
+        note_pass "$(basename "$add_form"): evidence description names the verbose flag"
+    else
+        note_fail "$(basename "$add_form"): evidence description does not mention the verbose flag"
+    fi
+    expect_field "$add_form" evidence-excerpt textarea
+    expect_field_optional "$add_form" evidence-excerpt
+done
+
+echo
+echo "== each add-support form requires the issue-before-PR acknowledgement =="
+# Scenario: Add-support forms reject a submission without acknowledgement. The
+# gate lives on the checkbox option's required flag, not a field-level block.
+for add_form in "$HARDWARE" "$ROCM" "$LLAMACPP"; do
+    expect_field "$add_form" gate-acknowledgement checkbox
+    expect_option_required "$add_form" gate-acknowledgement
+done
+
+echo
+echo "== the chooser lists the forms in numeric order =="
+# Scenario: The chooser lists the forms in numeric order — general bug,
+# platform bug, feature request, add hardware support, add ROCm version, add
+# llama.cpp version. Any other yml file here would change the chooser and
+# fails this comparison.
+expected_order="01-bug-report.yml
+02-bug-report-platform.yml
+03-feature-request.yml
+04-add-hardware-support.yml
+05-add-rocm-version.yml
+06-add-llama-cpp-version.yml"
+actual_order="$(cd "$FORMS" && ls -- *.yml | sort)"
+if [ "$actual_order" = "$expected_order" ]; then note_pass "forms sort into chooser order"
+else note_fail "unexpected files or order in $FORMS: $actual_order"; fi
+
+echo
+echo "== blank issues stay available alongside the forms =="
+# Scenario: Blank issues stay available alongside the forms. A config.yml
+# would let the repository disable them, so its absence is the assertion.
+if [ -e "$FORMS/config.yml" ]; then note_fail "config.yml is present; blank issues are configured away"
+else note_pass "no config.yml; blank issues stay available"; fi
+
+echo
+echo "== every form carries chooser-valid front matter =="
+# Scenario: Every form carries front matter the chooser accepts — re-checked
+# across all six files together.
+for form in "$FORMS"/0*.yml; do
+    expect_front_matter "$form"
+done
+
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
