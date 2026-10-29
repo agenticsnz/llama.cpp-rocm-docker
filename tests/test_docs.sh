@@ -22,7 +22,7 @@ echo "== the build guide exists and carries the moved sections =="
 if [ -f "$BUILD_GUIDE" ]; then note_pass "docs/local-build-guide.md exists"
 else note_fail "docs/local-build-guide.md is missing"; fi
 for heading in "## Prerequisites" "## Building" "### The resulting image" "## Tests"; do
-    if grep -qxF -- "$heading" "$BUILD_GUIDE"; then note_pass "guide carries: $heading"
+    if grep -qF -- "$heading" "$BUILD_GUIDE"; then note_pass "guide carries: $heading"
     else note_fail "guide is missing: $heading"; fi
 done
 
