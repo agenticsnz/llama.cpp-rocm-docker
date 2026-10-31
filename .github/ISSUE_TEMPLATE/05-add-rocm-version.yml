@@ -24,7 +24,7 @@ body:
       label: Evidence excerpt
       description: A short paste of the most relevant startup lines, if it helps — the attached file remains the required evidence.
   - id: gate-acknowledgement
-    type: checkbox
+    type: checkboxes
     attributes:
       label: Issue-before-PR acknowledgement
       options:
