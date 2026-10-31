@@ -1,0 +1,39 @@
+name: Add hardware support
+description: Request support for a new GPU card or architecture target
+title: "[Add Hardware]: "
+labels: [add-targets]
+body:
+  - id: gpu
+    type: input
+    attributes:
+      label: GPU
+      description: The GPU card target to add, e.g. gfx90a.
+    validations:
+      required: true
+  - id: arch
+    type: input
+    attributes:
+      label: Arch
+      description: The architecture string for the image tag, e.g. gfx90a or CDNA2.
+    validations:
+      required: true
+  - id: evidence
+    type: upload
+    attributes:
+      label: Evidence
+      description: llama-server startup logs produced with the verbose flag, showing the server starting on the target platform. If the upload fails, attach the file in the issue timeline after submitting.
+    validations:
+      required: true
+      accept: .log,.txt,.gz
+  - id: evidence-excerpt
+    type: textarea
+    attributes:
+      label: Evidence excerpt
+      description: A short paste of the most relevant startup lines, if it helps — the attached file remains the required evidence.
+  - id: gate-acknowledgement
+    type: checkbox
+    attributes:
+      label: Issue-before-PR acknowledgement
+      options:
+        - label: I understand that an add-support request issue must exist before a pull request merging configuration files for this combination is opened.
+          required: true

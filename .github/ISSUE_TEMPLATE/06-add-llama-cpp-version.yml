@@ -1,0 +1,32 @@
+name: Add llama.cpp version
+description: Request support for a new llama.cpp release tag
+title: "[Add llama.cpp]: "
+labels: [add-targets]
+body:
+  - id: llama-cpp-version
+    type: input
+    attributes:
+      label: llama.cpp version
+      description: The llama.cpp tag to build from, e.g. v0.5.0.
+    validations:
+      required: true
+  - id: evidence
+    type: upload
+    attributes:
+      label: Evidence
+      description: llama-server startup logs produced with the verbose flag, showing the server starting on the target platform. If the upload fails, attach the file in the issue timeline after submitting.
+    validations:
+      required: true
+      accept: .log,.txt,.gz
+  - id: evidence-excerpt
+    type: textarea
+    attributes:
+      label: Evidence excerpt
+      description: A short paste of the most relevant startup lines, if it helps — the attached file remains the required evidence.
+  - id: gate-acknowledgement
+    type: checkbox
+    attributes:
+      label: Issue-before-PR acknowledgement
+      options:
+        - label: I understand that an add-support request issue must exist before a pull request merging configuration files for this combination is opened.
+          required: true
