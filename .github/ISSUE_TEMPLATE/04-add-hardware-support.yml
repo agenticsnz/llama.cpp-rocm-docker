@@ -23,8 +23,7 @@ body:
       label: Evidence
       description: llama-server startup logs produced with the verbose flag, showing the server starting on the target platform. If the upload fails, attach the file in the issue timeline after submitting.
     validations:
-      required: true
-      accept: .log,.txt,.gz
+      accept: .log,.txt
   - id: evidence-excerpt
     type: textarea
     attributes:
