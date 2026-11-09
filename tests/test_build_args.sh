@@ -7,7 +7,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "$HERE/.." && pwd)"
 SCRIPT="$SRC/build-rocm.sh"
-# Directory holding the three axis env files the build script reads.
+# Directory holding the four axis env files the build script reads.
 CONF="$SRC/conf"
 SCRATCH="$(mktemp -d)"
 trap 'rm -rf "$SCRATCH"' EXIT
@@ -32,7 +32,7 @@ EXPECTED_ROCM_CORE_DIR="$(conf_key amd-7.14.1.env ROCM_CORE_DIR)"
 EXPECTED_CMAKE_BUILD_TYPE="$(conf_key build-config.env CMAKE_BUILD_TYPE)"
 EXPECTED_GGML_NATIVE="$(conf_key build-config.env GGML_NATIVE)"
 EXPECTED_REGISTRY="$(conf_key build-config.env REGISTRY)"
-EXPECTED_LLAMA_CPP_VERSION="$(conf_key build-config.env LLAMA_CPP_VERSION)"
+EXPECTED_LLAMA_CPP_VERSION="$(conf_key llamacpp-v0.5.0.env LLAMA_CPP_VERSION)"
 EXPECTED_IMAGE_VERSION="$(conf_key build-config.env VERSION)"
 # Image reference layout mirrors build_image_reference (registry, fixed
 # label root and repository, llama version, ROCm version, arch, image version).
@@ -59,15 +59,15 @@ expect_stderr() {
     else note_fail "expected warning containing: $2"; fi
 }
 
-run_dry() {  # run_dry <out> <err> <arch> <rocm> <config> [extra args...]
+run_dry() {  # run_dry <out> <err> <arch> <rocm> <config> <llamacpp> [extra args...]
     "$SCRIPT" --arch-env "$3" --rocm-env "$4" --config-env "$5" \
-        --source "$SRC" "${@:6}" --dry-run >"$1" 2>"$2"
+        --llamacpp-env "$6" --source "$SRC" "${@:7}" --dry-run >"$1" 2>"$2"
     echo $?
 }
 
-echo "== three-file happy path =="
+echo "== four-file happy path =="
 rc=$(run_dry "$SCRATCH/o1" "$SCRATCH/e1" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/o1" "--build-arg GPU_TARGET=$EXPECTED_GPU_TARGET"
 expect_line "$SCRATCH/o1" "--build-arg ROCM_BASE=$EXPECTED_ROCM_BASE"
@@ -76,6 +76,7 @@ expect_line "$SCRATCH/o1" "--build-arg ROCM_CORE_DIR=$EXPECTED_ROCM_CORE_DIR"
 expect_line "$SCRATCH/o1" "--build-arg CMAKE_BUILD_TYPE=$EXPECTED_CMAKE_BUILD_TYPE"
 expect_line "$SCRATCH/o1" "--build-arg GGML_NATIVE=$EXPECTED_GGML_NATIVE"
 expect_line "$SCRATCH/o1" "--build-arg GGML_CUDA_FA_QUANTS=$EXPECTED_FA_QUANTS"
+expect_line "$SCRATCH/o1" "--build-arg LLAMA_CPP_VERSION=$EXPECTED_LLAMA_CPP_VERSION"
 expect_line "$SCRATCH/o1" \
     "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
 expect_line "$SCRATCH/o1" \
@@ -86,8 +87,9 @@ echo "== the deprecated all-quants key is set by no env file =="
 # GGML_CUDA_FA_ALL_QUANTS is deprecated upstream: common.cmake warns that it is
 # superseded by GGML_CUDA_FA_QUANTS=all and overrides it to all regardless. A file
 # carrying it would put a deprecation warning in every configure log and express
-# nothing that GGML_CUDA_FA_QUANTS=all does not, so none of the three may set it.
-for env_file in "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env"; do
+# nothing that GGML_CUDA_FA_QUANTS=all does not, so none of the four may set it.
+for env_file in "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/llamacpp-v0.5.0.env"; do
     if grep -qE '^[[:space:]]*GGML_CUDA_FA_ALL_QUANTS[[:space:]]*=' "$env_file"; then
         note_fail "$(basename "$env_file") sets the deprecated GGML_CUDA_FA_ALL_QUANTS"
     else
@@ -101,6 +103,120 @@ if grep -q 'GGML_CUDA_FA_ALL_QUANTS' "$SCRATCH/o1"; then
 else
     note_pass "the resolved arguments carry no GGML_CUDA_FA_ALL_QUANTS"
 fi
+
+echo
+echo "== the llama.cpp version axis is a fourth required file =="
+# Scenario: --llamacpp-env joins --arch-env, --rocm-env and --config-env as a
+# required flag. An invocation naming only the original three is rejected
+# rather than guessed, exactly as the existing three are.
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --dry-run >"$SCRATCH/v0" 2>"$SCRATCH/ve0"
+[ $? -ne 0 ] && note_pass "missing --llamacpp-env rejected" || note_fail "accepted an invocation without --llamacpp-env"
+expect_stderr "$SCRATCH/ve0" "--llamacpp-env was not supplied"
+
+echo
+echo "== the version file resolves LLAMA_CPP_VERSION into the image reference =="
+# Scenario: the four-file invocation resolves LLAMA_CPP_VERSION from the
+# version file, and the image reference composed from it is unchanged by the
+# move out of the neutral file.
+rc=$(run_dry "$SCRATCH/v1" "$SCRATCH/ve1" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/llamacpp-v0.5.0.env")
+[ "$rc" = "0" ] && note_pass "exit 0 on the four-file invocation" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/v1" "--build-arg LLAMA_CPP_VERSION=$EXPECTED_LLAMA_CPP_VERSION"
+expect_line "$SCRATCH/v1" "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
+
+echo
+echo "== LLAMA_CPP_VERSION lives in the version file, not the neutral file =="
+# Scenario: the llama.cpp tag is owned by the version axis. The neutral file
+# no longer carries it, so the two copies cannot drift apart.
+if grep -qE '^[[:space:]]*LLAMA_CPP_VERSION[[:space:]]*=' "$CONF/llamacpp-v0.5.0.env"; then
+    note_pass "llamacpp-v0.5.0.env carries LLAMA_CPP_VERSION"
+else
+    note_fail "llamacpp-v0.5.0.env does not carry LLAMA_CPP_VERSION"
+fi
+if grep -qE '^[[:space:]]*LLAMA_CPP_VERSION[[:space:]]*=' "$CONF/build-config.env"; then
+    note_fail "build-config.env still carries LLAMA_CPP_VERSION"
+else
+    note_pass "build-config.env no longer carries LLAMA_CPP_VERSION"
+fi
+
+echo
+echo "== a stray LLAMA_CPP_VERSION in the neutral file loses and warns =="
+# Scenario: the version axis owns LLAMA_CPP_VERSION, so a copy in the neutral
+# file is discarded with a warning naming the llamacpp axis.
+cat > "$SCRATCH/stray-version.env" <<'ENV'
+CMAKE_BUILD_TYPE=Release
+REGISTRY=ghcr.io
+LLAMA_CPP_VERSION=v9.9.9
+VERSION=1.1.1
+GGML_NATIVE=OFF
+ENV
+rc=$(run_dry "$SCRATCH/v2" "$SCRATCH/ve2" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/stray-version.env" \
+    "$CONF/llamacpp-v0.5.0.env")
+[ "$rc" = "0" ] && note_pass "exit 0 on collision" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/v2" "--build-arg LLAMA_CPP_VERSION=$EXPECTED_LLAMA_CPP_VERSION"
+reject_line "$SCRATCH/v2" "--build-arg LLAMA_CPP_VERSION=v9.9.9"
+expect_stderr "$SCRATCH/ve2" "llamacpp axis"
+
+echo
+echo "== CMAKE_EXTRA_ARGS resolves to the version file's copy =="
+# Scenario: the pass-through for additional -D flags is owned by the version
+# axis, because which extra flags a build needs is a property of the llama.cpp
+# version. The neutral file's copy loses and the loss is reported.
+cat > "$SCRATCH/extra-version.env" <<'ENV'
+LLAMA_CPP_VERSION=v0.5.0
+CMAKE_EXTRA_ARGS=-DNEW_VERSION_FLAG=ON
+ENV
+cat > "$SCRATCH/extra-neutral.env" <<'ENV'
+CMAKE_BUILD_TYPE=Release
+REGISTRY=ghcr.io
+LLAMA_CPP_VERSION=v0.5.0
+VERSION=1.1.1
+GGML_NATIVE=OFF
+CMAKE_EXTRA_ARGS=-DSTRAY_FLAG=ON
+ENV
+rc=$(run_dry "$SCRATCH/v3" "$SCRATCH/ve3" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/extra-neutral.env" \
+    "$SCRATCH/extra-version.env")
+[ "$rc" = "0" ] && note_pass "exit 0 on collision" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/v3" "--build-arg CMAKE_EXTRA_ARGS=-DNEW_VERSION_FLAG=ON"
+reject_line "$SCRATCH/v3" "--build-arg CMAKE_EXTRA_ARGS=-DSTRAY_FLAG=ON"
+expect_stderr "$SCRATCH/ve3" "llamacpp axis"
+
+echo
+echo "== a Dockerfile ARG absent from KEY_AXIS passes the version-file guard =="
+# Scenario: a version-specific flag is wired in by declaring an ARG in
+# Dockerfile.rocm. CMAKE_BUILD_VERBOSE is such an ARG and is not an axis key,
+# so the guard must accept it rather than demand an axis entry.
+cat > "$SCRATCH/arg-version.env" <<'ENV'
+LLAMA_CPP_VERSION=v0.5.0
+CMAKE_BUILD_VERBOSE=--verbose
+ENV
+rc=$(run_dry "$SCRATCH/v4" "$SCRATCH/ve4" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$SCRATCH/arg-version.env")
+[ "$rc" = "0" ] && note_pass "exit 0 with a declared ARG" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/v4" "--build-arg CMAKE_BUILD_VERBOSE=--verbose"
+
+echo
+echo "== an unknown key in the version file is fatal =="
+# Scenario: docker only warns about an unknown --build-arg and carries on, so
+# a typo would silently drop the setting. The guard fails fast, naming the key
+# and the file. The stderr assertions are the load-bearing ones: a bad
+# invocation also exits non-zero, but for the wrong reason.
+cat > "$SCRATCH/typo-version.env" <<'ENV'
+LLAMA_CPP_VERSION=v0.5.0
+LLAMA_CPP_VERSIN=v0.5.0
+ENV
+"$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$SCRATCH/typo-version.env" \
+    --source "$SRC" --dry-run >"$SCRATCH/v5" 2>"$SCRATCH/ve5"
+[ $? -ne 0 ] && note_pass "unknown version-file key rejected" || note_fail "accepted an unknown version-file key"
+expect_stderr "$SCRATCH/ve5" "LLAMA_CPP_VERSIN"
+expect_stderr "$SCRATCH/ve5" "not a build argument"
 
 echo
 echo "== ownership: a key in two files resolves to the owner and warns =="
@@ -120,7 +236,7 @@ LD_LIBRARY_PATH=/opt/rocm/lib
 GPU_TARGET=gfx9999
 ENV
 rc=$(run_dry "$SCRATCH/o2" "$SCRATCH/e2" \
-    "$SCRATCH/cross-arch.env" "$SCRATCH/cross-rocm.env" "$CONF/build-config.env")
+    "$SCRATCH/cross-arch.env" "$SCRATCH/cross-rocm.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0 on collision" || note_fail "exit was $rc, want 0"
 # GPU_TARGET is owned by the architecture file, so gfx9999 from the version file loses
 expect_line "$SCRATCH/o2" "--build-arg GPU_TARGET=gfx1200"
@@ -142,7 +258,7 @@ ARCH_STRING=gfx1200
 CMAKE_BUILD_TYPE=Debug
 ENV
 rc=$(run_dry "$SCRATCH/o3" "$SCRATCH/e3" \
-    "$SCRATCH/stray-cfg.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+    "$SCRATCH/stray-cfg.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/o3" "--build-arg CMAKE_BUILD_TYPE=Release"
 reject_line "$SCRATCH/o3" "--build-arg CMAKE_BUILD_TYPE=Debug"
@@ -155,7 +271,7 @@ GPU_TARGET=gfx1200;gfx1201
 ARCH_STRING=gfx1200
 ENV
 rc=$(run_dry "$SCRATCH/o4" "$SCRATCH/e4" \
-    "$SCRATCH/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+    "$SCRATCH/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/o4" "--build-arg GPU_TARGET=gfx1200;gfx1201"
 expect_stderr "$SCRATCH/e4" "GPU_TARGET"
@@ -169,7 +285,7 @@ ROCM_BASE_ASSEMBLY=published-multiarch-image
 ROCM_CORE_DIR=/opt/rocm/core-9.9
 ENV
 rc=$(run_dry "$SCRATCH/o5" "$SCRATCH/e5" \
-    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-9.9.9.env" "$CONF/build-config.env")
+    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-9.9.9.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/o5" "--build-arg ROCM_VERSION=9.9.9"
 
@@ -183,7 +299,7 @@ ROCM_CORE_DIR=/opt/rocm/core-7.14
 LD_LIBRARY_PATH=/opt/rocm/lib
 ENV
 rc=$(run_dry "$SCRATCH/o6" "$SCRATCH/e6" \
-    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-7.14.1.env" "$CONF/build-config.env")
+    "$CONF/amd-gfx1200.env" "$SCRATCH/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_stderr "$SCRATCH/e6" "ROCM_BASE"
 
@@ -195,7 +311,7 @@ ARCH_STRING=gfx1200
 SOME_FUTURE_FLAG=7
 ENV
 rc=$(run_dry "$SCRATCH/o7" "$SCRATCH/e7" \
-    "$SCRATCH/extra-arch.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env")
+    "$SCRATCH/extra-arch.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/o7" "--build-arg SOME_FUTURE_FLAG=7"
 
@@ -208,7 +324,7 @@ echo "== missing required flag exits non-zero =="
 echo
 echo "== --set displaces a file value =="
 rc=$(run_dry "$SCRATCH/s1" "$SCRATCH/se1" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
     --set ROCM_VERSION=10.1.0)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s1" "--build-arg ROCM_VERSION=10.1.0"
@@ -218,22 +334,22 @@ expect_stderr "$SCRATCH/se1" "ROCM_VERSION"
 echo
 echo "== malformed --set is fatal =="
 "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SRC" \
     --set NOEQUALS --dry-run >"$SCRATCH/s2" 2>&1
 [ $? -ne 0 ] && note_pass "bare --set rejected" || note_fail "accepted --set without ="
 "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SRC" \
     --set =value --dry-run >"$SCRATCH/s2b" 2>&1
 [ $? -ne 0 ] && note_pass "empty --set key rejected" || note_fail "accepted --set with empty key"
 "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SRC" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SRC" \
     --dry-run --set >"$SCRATCH/s2c" 2>&1
 [ $? -ne 0 ] && note_pass "trailing --set rejected" || note_fail "accepted trailing --set without value"
 
 echo
 echo "== --set keeps value after first equals and strips key whitespace =="
 rc=$(run_dry "$SCRATCH/s3" "$SCRATCH/se3" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
     --set SOME_FUTURE_FLAG=a=b --set " GPU_TARGET =gfx1200")
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s3" "--build-arg SOME_FUTURE_FLAG=a=b"
@@ -248,7 +364,7 @@ ROCM_CORE_DIR=/opt/rocm/core-10.1
 LD_LIBRARY_PATH=/opt/rocm/lib
 ENV
 rc=$(run_dry "$SCRATCH/s4" "$SCRATCH/se4" \
-    "$CONF/amd-gfx1200.env" "$SCRATCH/no-version.env" "$CONF/build-config.env" \
+    "$CONF/amd-gfx1200.env" "$SCRATCH/no-version.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
     --set ROCM_VERSION=10.1.0)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s4" "--build-arg ROCM_VERSION=10.1.0"
@@ -263,7 +379,7 @@ GGML_NATIVE=OFF
 ENV
 rc=$( ( export REGISTRY=shell-registry:5000
   run_dry "$SCRATCH/s5" "$SCRATCH/se5" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/no-registry.env" ) )
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/no-registry.env" "$CONF/llamacpp-v0.5.0.env" ) )
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s5" "--build-arg REGISTRY=shell-registry:5000"
 expect_stderr "$SCRATCH/se5" "REGISTRY"
@@ -272,7 +388,7 @@ echo
 echo "== files beat shell and unknown exports never leak =="
 rc=$( ( export REGISTRY=shell-registry:5000 SOME_RANDOM_EXPORT=leak EMPTY_EXPORT=""
   run_dry "$SCRATCH/s6" "$SCRATCH/se6" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" ) )
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" ) )
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s6" "--build-arg REGISTRY=$EXPECTED_REGISTRY"
 reject_line "$SCRATCH/s6" "--build-arg REGISTRY=shell-registry:5000"
@@ -285,7 +401,7 @@ fi
 echo
 echo "== empty --set value behaves as absent =="
 rc=$(run_dry "$SCRATCH/s7" "$SCRATCH/se7" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
     --set SOME_FUTURE_FLAG=)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 reject_line "$SCRATCH/s7" "--build-arg SOME_FUTURE_FLAG="
@@ -293,7 +409,7 @@ reject_line "$SCRATCH/s7" "--build-arg SOME_FUTURE_FLAG="
 echo
 echo "== duplicate --set last wins without warning =="
 rc=$(run_dry "$SCRATCH/s8" "$SCRATCH/se8" \
-    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
     --set REGISTRY=a --set REGISTRY=b)
 [ "$rc" = "0" ] && note_pass "exit 0" || note_fail "exit was $rc, want 0"
 expect_line "$SCRATCH/s8" "--build-arg REGISTRY=b"
@@ -310,7 +426,7 @@ chmod +x "$SCRATCH/stubbin/docker"
 touch "$SCRATCH/fakesrc/.devops/rocm.Dockerfile"
 STUB_LOG="$SCRATCH/argv.log" PATH="$SCRATCH/stubbin:$PATH" \
     "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" \
     >"$SCRATCH/o9" 2>&1
 [ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
 if grep -qxF -- '<--build-arg>' "$SCRATCH/argv.log" \
@@ -341,7 +457,7 @@ echo
 echo "== --no-cache reaches docker only when requested =="
 STUB_LOG="$SCRATCH/argv-nc.log" PATH="$SCRATCH/stubbin:$PATH" \
     "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" --no-cache \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" --no-cache \
     >"$SCRATCH/o10" 2>&1
 [ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
 if grep -qxF -- '<--no-cache>' "$SCRATCH/argv-nc.log"; then
@@ -351,7 +467,7 @@ else
 fi
 STUB_LOG="$SCRATCH/argv-c.log" PATH="$SCRATCH/stubbin:$PATH" \
     "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" \
     >"$SCRATCH/o11" 2>&1
 [ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
 if grep -qxF -- '<--no-cache>' "$SCRATCH/argv-c.log"; then
@@ -364,7 +480,7 @@ echo
 echo "== --verbose reaches docker and cmake only when requested =="
 STUB_LOG="$SCRATCH/argv-v.log" PATH="$SCRATCH/stubbin:$PATH" \
     "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" --verbose \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" --verbose \
     >"$SCRATCH/o12" 2>&1
 [ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
 if grep -qxF -- '<--progress=plain>' "$SCRATCH/argv-v.log" \
@@ -375,7 +491,7 @@ else
 fi
 STUB_LOG="$SCRATCH/argv-q.log" PATH="$SCRATCH/stubbin:$PATH" \
     "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CONF/amd-7.14.1.env" \
-    --config-env "$CONF/build-config.env" --source "$SCRATCH/fakesrc" \
+    --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" \
     >"$SCRATCH/o13" 2>&1
 [ $? -eq 0 ] && note_pass "real invocation exits 0" || note_fail "real invocation failed"
 if grep -qxF -- '<--progress=plain>' "$SCRATCH/argv-q.log" \
