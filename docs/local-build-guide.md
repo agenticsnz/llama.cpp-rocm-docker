@@ -12,7 +12,7 @@
 
 ## Building
 
-All three configuration files are required. The script rejects a partial
+All four configuration files are required. The script rejects a partial
 invocation rather than guessing which axis was meant. The source tree is
 fetched automatically; `--source` is only needed for a local checkout:
 
@@ -20,6 +20,7 @@ fetched automatically; `--source` is only needed for a local checkout:
 ./build-rocm.sh \
   --arch-env conf/amd-gfx1200.env \
   --rocm-env conf/amd-7.14.1.env \
+  --llamacpp-env conf/llamacpp-v0.5.0.env \
   --config-env conf/build-config.env
 ```
 
@@ -27,6 +28,7 @@ fetched automatically; `--source` is only needed for a local checkout:
 ./build-rocm.sh \
   --arch-env conf/amd-gfx1200.env \
   --rocm-env conf/amd-7.14.1.env \
+  --llamacpp-env conf/llamacpp-v0.5.0.env \
   --config-env conf/build-config.env \
   --source /path/to/llama.cpp
 ```

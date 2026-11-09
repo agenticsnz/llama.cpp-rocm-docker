@@ -18,7 +18,7 @@ Branch names follow **[label]/issue-[#]-[short-description-kebab-case]**. `[labe
 
 A combination is one ROCm release, one GPU architecture and one llama.cpp tag. To request one, open the matching add-support issue — add hardware support, add ROCm version or add llama.cpp version, depending on what is new: it must attach llama-server startup logs produced with the verbose flag on the target platform, so the combination is known to work before any file is written. A pull request that merges configuration files for a combination **must name an add-support request issue that already exists**.
 
-Each axis of the build is owned by one configuration file, selected on the command line as **--arch-env** (the GPU architecture), **--rocm-env** (the ROCm release) and **--config-env** (the axis-neutral settings). A new combination on an existing axis adds one file; a key found in more than one file resolves to the file that owns its axis, and the losing copy is reported and discarded.
+Each axis of the build is owned by one configuration file, selected on the command line as **--arch-env** (the GPU architecture), **--rocm-env** (the ROCm release), **--llamacpp-env** (the llama.cpp version) and **--config-env** (the axis-neutral settings). A new combination on an existing axis adds one file; a key found in more than one file resolves to the file that owns its axis, and the losing copy is reported and discarded.
 
 A new axis — a dimension the build does not yet vary by — starts as an infrastructure-labelled issue explaining what varies, which file would own it, and which build arguments it would supply. Discuss it there before writing any configuration, because the axis changes what every image name means.
 
