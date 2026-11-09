@@ -1,0 +1,26 @@
+name: Feature request
+description: A new capability or change, not tied to a particular platform combination
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - id: description
+    type: textarea
+    attributes:
+      label: Description
+      description: What you want, in detail — the behaviour, the use case, and the problem it solves.
+    validations:
+      required: true
+  - id: improvement
+    type: textarea
+    attributes:
+      label: What it improves
+      description: How this change makes the image, the build, or the workflow better than it is today.
+    validations:
+      required: true
+  - id: implementation-suggestion
+    type: textarea
+    attributes:
+      label: Implementation suggestion
+      description: At least one way this could be implemented — files to change, flags to add, or prior art to follow.
+    validations:
+      required: true
