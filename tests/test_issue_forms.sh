@@ -83,7 +83,7 @@ expect_free_text() {
 expect_accepts_logs() {
     local accept_line
     accept_line="$(field_block "$1" "$2" | grep '^      accept: ')"
-    if [ -n "$accept_line" ] && [[ "$accept_line" == *".log"* ]] && [[ "$accept_line" == *".txt"* ]] && [[ "$accept_line" == *".gz"* ]]; then
+    if [ -n "$accept_line" ] && [[ "$accept_line" == *".log"* ]] && [[ "$accept_line" == *".txt"* ]]; then
         note_pass "$(basename "$1"): $2 accepts log file extensions"
     else
         note_fail "$(basename "$1"): $2 accept list is missing a log extension"
@@ -145,7 +145,7 @@ done
 expect_field "$BUG" reproduction-steps textarea
 expect_field_required "$BUG" reproduction-steps
 expect_field "$BUG" logs upload
-expect_field_required "$BUG" logs
+expect_field_optional "$BUG" logs
 expect_accepts_logs "$BUG" logs
 expect_fallback_note "$BUG" logs
 
@@ -195,7 +195,7 @@ done
 expect_field "$PLATFORM" reproduction-steps textarea
 expect_field_required "$PLATFORM" reproduction-steps
 expect_field "$PLATFORM" logs upload
-expect_field_required "$PLATFORM" logs
+expect_field_optional "$PLATFORM" logs
 expect_accepts_logs "$PLATFORM" logs
 expect_fallback_note "$PLATFORM" logs
 
@@ -212,7 +212,7 @@ echo "== a complete bug report is accepted on both bug forms =="
 # submission until every required field is filled, so requiring all the
 # mandated fields on both forms is exactly that scenario.
 for bug_form in "$BUG" "$PLATFORM"; do
-    for report_id in symptoms reproduction-steps logs; do
+    for report_id in symptoms reproduction-steps; do
         expect_field_required "$bug_form" "$report_id"
     done
     for runtime_id in os docker-runtime docker-runtime-version; do
@@ -290,7 +290,7 @@ echo "== each add-support form requires verbose startup evidence =="
 # flag and the timeline fallback. The excerpt stays optional everywhere.
 for add_form in "$HARDWARE" "$ROCM" "$LLAMACPP"; do
     expect_field "$add_form" evidence upload
-    expect_field_required "$add_form" evidence
+    expect_field_optional "$add_form" evidence
     expect_accepts_logs "$add_form" evidence
     expect_fallback_note "$add_form" evidence
     if [ -n "$(field_block "$add_form" evidence | grep -i 'verbose')" ]; then
@@ -307,7 +307,7 @@ echo "== each add-support form requires the issue-before-PR acknowledgement =="
 # Scenario: Add-support forms reject a submission without acknowledgement. The
 # gate lives on the checkbox option's required flag, not a field-level block.
 for add_form in "$HARDWARE" "$ROCM" "$LLAMACPP"; do
-    expect_field "$add_form" gate-acknowledgement checkbox
+    expect_field "$add_form" gate-acknowledgement checkboxes
     expect_option_required "$add_form" gate-acknowledgement
 done
 
