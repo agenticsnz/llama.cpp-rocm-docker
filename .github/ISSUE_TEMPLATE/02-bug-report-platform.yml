@@ -72,8 +72,8 @@ body:
       label: Log file
       description: The full output of the failing run, attached as a file. If the upload fails, attach the file in the issue timeline after submitting.
     validations:
-      required: true
-      accept: .log,.txt,.gz
+      required: false
+      accept: .log,.txt
   - id: logs-excerpt
     type: textarea
     attributes:
