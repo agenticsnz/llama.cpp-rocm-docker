@@ -320,5 +320,5 @@ ENV LLAMA_ARG_PORT=8080
 WORKDIR /app
 
 
-HEALTHCHECK CMD curl -f http://localhost:${LLAMA_ARG_PORT}/health || exit 1
+HEALTHCHECK CMD [ "curl", "-f", "http://localhost:8080/health" ]
 ENTRYPOINT ["/app/llama-server"]

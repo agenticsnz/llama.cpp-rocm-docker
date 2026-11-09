@@ -49,6 +49,45 @@ ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:latest
 The image runs `llama-server` on port 8080 by default (`LLAMA_ARG_HOST` /
 `LLAMA_ARG_PORT`) with a `/health` healthcheck.
 
+### Ports and the healthcheck
+
+The built-in healthcheck probes port 8080, matching the default
+`LLAMA_ARG_PORT`. It is a drop-in for the official llama.cpp image and
+behaves identically: the internal port stays 8080, and you remap to a
+different host port rather than changing `--port`.
+
+Docker CLI:
+
+```bash
+docker run -p 9090:8080 ghcr.io/agenticsnz/llama.cpp-...:latest \
+  -m /models/model.gguf --host 0.0.0.0
+```
+
+Docker Compose:
+
+```yaml
+services:
+  llama:
+    image: ghcr.io/agenticsnz/llama.cpp-...:latest
+    ports:
+      - "9090:8080"
+    command: >
+      -m /models/model.gguf
+      --host 0.0.0.0
+```
+
+If you must run the server on a different internal port (via `--port` or
+`LLAMA_ARG_PORT`), override the healthcheck in your own configuration to
+probe that port, e.g.:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+
 ## Tests
 
 Six suites, each in `tests/`. Run them from the repository root.
