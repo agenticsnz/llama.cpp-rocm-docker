@@ -318,7 +318,9 @@ RUN set -e; \
 # The listening port is owned by the llama.cpp version file and arrives as a
 # build argument. LLAMA_ARG_PORT is upstream's own mechanism for --port, and
 # the shell-form healthcheck below expands the same value at container runtime,
-# so the server and the probe cannot disagree.
+# so under the default and LLAMA_ARG_PORT overrides the server and the probe
+# cannot disagree. A --port CLI argument overrides the server only, so the probe
+# does drift in that case.
 ARG LLAMA_ARG_PORT=8080
 ENV LLAMA_ARG_HOST=0.0.0.0
 ENV LLAMA_ARG_PORT=${LLAMA_ARG_PORT}

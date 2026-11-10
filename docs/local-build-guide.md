@@ -53,7 +53,7 @@ The image runs `llama-server` on port 8080 by default (`LLAMA_ARG_HOST` /
 
 ### Ports and the healthcheck
 
-The listening port comes from the llama.cpp version configuration file: `conf/llamacpp-v0.5.0.env` sets `LLAMA_ARG_PORT=8080`, which `build-rocm.sh` passes to the build. The runtime stage derives its `LLAMA_ARG_PORT` environment from that value, and the healthcheck expands the same variable inside the container, so the probe cannot drift from the port the server reads. The image keeps the official llama.cpp image's default: the internal port stays 8080, and you remap to a different host port rather than changing `--port`.
+The listening port comes from the llama.cpp version configuration file: `conf/llamacpp-v0.5.0.env` sets `LLAMA_ARG_PORT=8080`, which `build-rocm.sh` passes to the build. The runtime stage derives its `LLAMA_ARG_PORT` environment from that value, and the healthcheck expands the same variable inside the container, so under the default and `-e LLAMA_ARG_PORT` overrides the probe cannot drift from the port the server reads; a `--port` CLI argument overrides the server only, and in that case the probe does drift (see below). The image keeps the official llama.cpp image's default: the internal port stays 8080, and you remap to a different host port rather than changing `--port`.
 
 Docker CLI:
 

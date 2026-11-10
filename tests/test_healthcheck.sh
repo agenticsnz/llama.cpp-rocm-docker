@@ -6,7 +6,9 @@
 #     back to the Dockerfile default while build-rocm.sh passes the version's
 #     value;
 #   - the healthcheck is a shell-form command that expands the same variable at
-#     container runtime, so the probe cannot drift from the server's port;
+#     container runtime, so under the default and LLAMA_ARG_PORT overrides the
+#     probe cannot drift from the server's port (a --port CLI argument moves the
+#     server only);
 #   - when an image and model are available (LLAMA_TEST_IMAGE and
 #     LLAMA_TEST_MODEL), the check is exercised at runtime on the default port,
 #     with a remapped host port, and with an LLAMA_ARG_PORT override that moves
@@ -25,13 +27,15 @@ note_fail() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 echo "== the runtime stage consumes the version-owned port =="
 # Scenario: the port the version file carries arrives as a build argument, and
 # the runtime stage derives the environment from it. Direct docker builds that
-# bypass build-rocm.sh keep the Dockerfile default.
-if grep -qxF 'ARG LLAMA_ARG_PORT=8080' "$DOCKERFILE"; then
+# bypass build-rocm.sh keep the Dockerfile default. The positive checks read only
+# the runtime stage, so an ARG moved into the build stage fails.
+RUNTIME_STAGE="$(sed -n '/^FROM ubuntu:24.04 AS runtime/,$p' "$DOCKERFILE")"
+if grep -qxF 'ARG LLAMA_ARG_PORT=8080' <<<"$RUNTIME_STAGE"; then
     note_pass "runtime stage declares ARG LLAMA_ARG_PORT=8080"
 else
     note_fail "runtime stage does not declare ARG LLAMA_ARG_PORT=8080"
 fi
-if grep -qxF 'ENV LLAMA_ARG_PORT=${LLAMA_ARG_PORT}' "$DOCKERFILE"; then
+if grep -qxF 'ENV LLAMA_ARG_PORT=${LLAMA_ARG_PORT}' <<<"$RUNTIME_STAGE"; then
     note_pass "runtime stage derives LLAMA_ARG_PORT from the build argument"
 else
     note_fail "runtime stage does not derive LLAMA_ARG_PORT from the build argument"
