@@ -24,6 +24,22 @@ FAIL=0
 note_pass() { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 note_fail() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 
+# Polls a container's health status for up to about 60 seconds and prints the
+# final status, or "unknown" when docker cannot inspect the container. The
+# model may take a while to load, so the first poll waits before checking.
+wait_for_container_health() {
+    local container="$1"
+    local status
+    sleep 2
+    for _ in $(seq 1 30); do
+        status="$(docker inspect "$container" --format '{{.State.Health.Status}}' 2>/dev/null)"
+        [ "$status" = "healthy" ] && break
+        sleep 2
+    done
+    status="$(docker inspect "$container" --format '{{.State.Health.Status}}' 2>/dev/null)"
+    echo "${status:-unknown}"
+}
+
 echo "== the runtime stage consumes the version-owned port =="
 # Scenario: the port the version file carries arrives as a build argument, and
 # the runtime stage derives the environment from it. Direct docker builds that
@@ -97,14 +113,7 @@ echo "== runtime: default port 8080 =="
 CONTAINER="hc-default-$$"
 docker run -d --name "$CONTAINER" -p 18080:8080 "$IMAGE" \
     -m "$MODEL" --host 0.0.0.0 >/dev/null 2>&1
-sleep 2
-# Wait for the model to load (up to ~60s), then check health.
-for _ in $(seq 1 30); do
-    STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
-    [ "$STATUS" = "healthy" ] && break
-    sleep 2
-done
-STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
+STATUS="$(wait_for_container_health "$CONTAINER")"
 if [ "$STATUS" = "healthy" ]; then
     note_pass "container healthy on default port 8080"
 else
@@ -117,13 +126,7 @@ echo "== runtime: remapped host port (9090 -> 8080) =="
 CONTAINER="hc-remapped-$$"
 docker run -d --name "$CONTAINER" -p 9090:8080 "$IMAGE" \
     -m "$MODEL" --host 0.0.0.0 >/dev/null 2>&1
-sleep 2
-for _ in $(seq 1 30); do
-    STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
-    [ "$STATUS" = "healthy" ] && break
-    sleep 2
-done
-STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
+STATUS="$(wait_for_container_health "$CONTAINER")"
 if [ "$STATUS" = "healthy" ]; then
     note_pass "container healthy with remapped host port"
 else
@@ -140,13 +143,7 @@ echo "== runtime: LLAMA_ARG_PORT override moves the probe =="
 CONTAINER="hc-override-$$"
 docker run -d --name "$CONTAINER" -e LLAMA_ARG_PORT=9090 -p 19090:9090 "$IMAGE" \
     -m "$MODEL" --host 0.0.0.0 >/dev/null 2>&1
-sleep 2
-for _ in $(seq 1 30); do
-    STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
-    [ "$STATUS" = "healthy" ] && break
-    sleep 2
-done
-STATUS="$(docker inspect "$CONTAINER" --format '{{.State.Health.Status}}' 2>/dev/null)"
+STATUS="$(wait_for_container_health "$CONTAINER")"
 if [ "$STATUS" = "healthy" ]; then
     note_pass "container healthy with an LLAMA_ARG_PORT override"
 else
