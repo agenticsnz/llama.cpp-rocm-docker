@@ -315,10 +315,15 @@ RUN set -e; \
     } || true; \
     echo "loader resolves every library in the ROCm backend and the server."
 
+# The listening port is owned by the llama.cpp version file and arrives as a
+# build argument. LLAMA_ARG_PORT is upstream's own mechanism for --port, and
+# the shell-form healthcheck below expands the same value at container runtime,
+# so the server and the probe cannot disagree.
+ARG LLAMA_ARG_PORT=8080
 ENV LLAMA_ARG_HOST=0.0.0.0
-ENV LLAMA_ARG_PORT=8080
+ENV LLAMA_ARG_PORT=${LLAMA_ARG_PORT}
 WORKDIR /app
 
 
-HEALTHCHECK CMD [ "curl", "-f", "http://localhost:8080/health" ]
+HEALTHCHECK CMD curl -f "http://localhost:${LLAMA_ARG_PORT}/health"
 ENTRYPOINT ["/app/llama-server"]
