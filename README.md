@@ -70,6 +70,7 @@ axis. The other copy is reported and discarded.
 |---|---|
 | `LLAMA_CPP_VERSION` | llama.cpp tag the source checkout must be at; part of the image tag |
 | `CMAKE_EXTRA_ARGS` | Pass-through for additional `-D` flags a particular version needs; owned by this axis so the flags follow the version |
+| `LLAMA_ARG_PORT` | Port the image serves on; upstream reads it for `--port`, and the healthcheck expands the same value |
 
 ### Neutral axis (`conf/build-config.env`)
 

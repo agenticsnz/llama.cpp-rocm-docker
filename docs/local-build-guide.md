@@ -53,10 +53,7 @@ The image runs `llama-server` on port 8080 by default (`LLAMA_ARG_HOST` /
 
 ### Ports and the healthcheck
 
-The built-in healthcheck probes port 8080, matching the default
-`LLAMA_ARG_PORT`. It is a drop-in for the official llama.cpp image and
-behaves identically: the internal port stays 8080, and you remap to a
-different host port rather than changing `--port`.
+The listening port comes from the llama.cpp version configuration file: `conf/llamacpp-v0.5.0.env` sets `LLAMA_ARG_PORT=8080`, which `build-rocm.sh` passes to the build. The runtime stage derives its `LLAMA_ARG_PORT` environment from that value, and the healthcheck expands the same variable inside the container, so the probe cannot drift from the port the server reads. The image keeps the official llama.cpp image's default: the internal port stays 8080, and you remap to a different host port rather than changing `--port`.
 
 Docker CLI:
 
@@ -78,9 +75,7 @@ services:
       --host 0.0.0.0
 ```
 
-If you must run the server on a different internal port (via `--port` or
-`LLAMA_ARG_PORT`), override the healthcheck in your own configuration to
-probe that port, e.g.:
+If you must run the server on a different internal port, prefer setting `LLAMA_ARG_PORT`, for example `-e LLAMA_ARG_PORT=9090`: the healthcheck expands the same variable, so it follows the server without any custom configuration. A `--port` argument overrides the environment for the server only, leaving the healthcheck on the image's port; in that case override the healthcheck yourself, for example:
 
 ```yaml
 healthcheck:

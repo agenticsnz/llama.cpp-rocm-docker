@@ -57,5 +57,21 @@ for suite in test_build_args.sh test_build_stage.sh test_runtime_stage.sh \
 done
 
 echo
+echo "== the guide documents the version-owned port =="
+# Scenario: the guide states where the image's listening port comes from.
+if grep -qF -- 'comes from the llama.cpp version configuration file' "$BUILD_GUIDE"; then
+    note_pass "guide states the port comes from the version configuration file"
+else
+    note_fail "guide does not state the port's version-file source"
+fi
+# Scenario: the guide states that a runtime LLAMA_ARG_PORT override moves the
+# healthcheck probe as well as the server.
+if grep -qF -- 'the healthcheck expands the same variable' "$BUILD_GUIDE"; then
+    note_pass "guide states that the healthcheck follows an LLAMA_ARG_PORT override"
+else
+    note_fail "guide does not state that the healthcheck follows an env override"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
