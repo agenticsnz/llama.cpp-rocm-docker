@@ -33,6 +33,8 @@ EXPECTED_CMAKE_BUILD_TYPE="$(conf_key build-config.env CMAKE_BUILD_TYPE)"
 EXPECTED_GGML_NATIVE="$(conf_key build-config.env GGML_NATIVE)"
 EXPECTED_REGISTRY="$(conf_key build-config.env REGISTRY)"
 EXPECTED_LLAMA_CPP_VERSION="$(conf_key llamacpp-v0.5.0.env LLAMA_CPP_VERSION)"
+# Port the version file declares for the image's server and healthcheck.
+EXPECTED_LLAMA_ARG_PORT="$(conf_key llamacpp-v0.5.0.env LLAMA_ARG_PORT)"
 EXPECTED_IMAGE_VERSION="$(conf_key build-config.env VERSION)"
 # Image reference layout mirrors build_image_reference (registry, fixed
 # label root and repository, llama version, ROCm version, arch, image version).
@@ -77,6 +79,7 @@ expect_line "$SCRATCH/o1" "--build-arg CMAKE_BUILD_TYPE=$EXPECTED_CMAKE_BUILD_TY
 expect_line "$SCRATCH/o1" "--build-arg GGML_NATIVE=$EXPECTED_GGML_NATIVE"
 expect_line "$SCRATCH/o1" "--build-arg GGML_CUDA_FA_QUANTS=$EXPECTED_FA_QUANTS"
 expect_line "$SCRATCH/o1" "--build-arg LLAMA_CPP_VERSION=$EXPECTED_LLAMA_CPP_VERSION"
+expect_line "$SCRATCH/o1" "--build-arg LLAMA_ARG_PORT=$EXPECTED_LLAMA_ARG_PORT"
 expect_line "$SCRATCH/o1" \
     "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
 expect_line "$SCRATCH/o1" \
@@ -160,6 +163,42 @@ rc=$(run_dry "$SCRATCH/v2" "$SCRATCH/ve2" \
 expect_line "$SCRATCH/v2" "--build-arg LLAMA_CPP_VERSION=$EXPECTED_LLAMA_CPP_VERSION"
 reject_line "$SCRATCH/v2" "--build-arg LLAMA_CPP_VERSION=v9.9.9"
 expect_stderr "$SCRATCH/ve2" "llamacpp axis"
+
+echo
+echo "== LLAMA_ARG_PORT is owned by the version axis =="
+# Scenario: the listening port is version-owned, so the version file carries
+# LLAMA_ARG_PORT and the neutral file does not. One value then drives both the
+# server and the healthcheck.
+if grep -qE '^[[:space:]]*LLAMA_ARG_PORT[[:space:]]*=' "$CONF/llamacpp-v0.5.0.env"; then
+    note_pass "llamacpp-v0.5.0.env carries LLAMA_ARG_PORT"
+else
+    note_fail "llamacpp-v0.5.0.env does not carry LLAMA_ARG_PORT"
+fi
+if grep -qE '^[[:space:]]*LLAMA_ARG_PORT[[:space:]]*=' "$CONF/build-config.env"; then
+    note_fail "build-config.env still carries LLAMA_ARG_PORT"
+else
+    note_pass "build-config.env no longer carries LLAMA_ARG_PORT"
+fi
+
+echo
+echo "== a stray LLAMA_ARG_PORT in the neutral file loses and warns =="
+# Scenario: the version axis owns LLAMA_ARG_PORT, so a copy in the neutral file
+# is discarded with a warning naming the llamacpp axis. The emitted build
+# argument is the version file's value, never the stray one.
+cat > "$SCRATCH/stray-port.env" <<'ENV'
+CMAKE_BUILD_TYPE=Release
+REGISTRY=ghcr.io
+LLAMA_ARG_PORT=9999
+VERSION=1.1.1
+GGML_NATIVE=OFF
+ENV
+rc=$(run_dry "$SCRATCH/p1" "$SCRATCH/pe1" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$SCRATCH/stray-port.env" \
+    "$CONF/llamacpp-v0.5.0.env")
+[ "$rc" = "0" ] && note_pass "exit 0 on collision" || note_fail "exit was $rc, want 0"
+expect_line "$SCRATCH/p1" "--build-arg LLAMA_ARG_PORT=$EXPECTED_LLAMA_ARG_PORT"
+reject_line "$SCRATCH/p1" "--build-arg LLAMA_ARG_PORT=9999"
+expect_stderr "$SCRATCH/pe1" "llamacpp axis"
 
 echo
 echo "== CMAKE_EXTRA_ARGS resolves to the version file's copy =="

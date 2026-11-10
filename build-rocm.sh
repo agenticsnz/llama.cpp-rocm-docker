@@ -56,6 +56,7 @@ declare -A KEY_AXIS=(
     [VERSION]=neutral
     [GGML_NATIVE]=neutral
     [CMAKE_EXTRA_ARGS]=llamacpp
+    [LLAMA_ARG_PORT]=llamacpp
 )
 
 # Every key the build cannot proceed without, since the image reference or the
