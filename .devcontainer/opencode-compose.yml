@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile.opencode
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-mcr.microsoft.com/devcontainers/base:ubuntu-24.04}
+
+    image: llama.cpp-rocm-docker:dev-opencode
+
+    volumes:
+      # Mount workspace
+      - ..:/workspaces/llama.cpp-rocm-docker:cached
+
+      # OpenCode configuration mounts
+      - ${HOME}/.config/opencode:/home/vscode/.config/opencode
+      - ${HOME}/.config/opencode:/workspaces/llama.cpp-rocm-docker/.config/opencode
+      - ../.local/state/opencode:/home/vscode/.local/state/opencode
+      - ../.local/share/opencode:/home/vscode/.local/share/opencode
+
+    environment:
+      - HOST_WORKSPACE_ROOT=/workspaces/llama.cpp-rocm-docker
+
+    user: vscode
+
+    # Keep container running
+    command: sleep infinity
+
+    # Use host network (can be overridden if needed)
+    network_mode: host
+
+    # Ensure proper init process
+    init: true
