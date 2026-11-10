@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Build the llama.cpp ROCm image from three configuration files.
+# Build the llama.cpp ROCm image from four configuration files.
 #
 # Each configuration file owns one axis of the build. The architecture file
 # owns anything that changes with the card, the ROCm version file owns anything
-# that changes with the release, and the axis-neutral file owns the rest. A key
-# appearing in more than one file resolves to the file that owns its axis; the
-# other copy is reported and discarded, so a stray duplicate cannot silently
-# change the build.
+# that changes with the release, the llama.cpp version file owns the tag and
+# any build variable that exists only because that version needs it, and the
+# axis-neutral file owns the rest. A key appearing in more than one file
+# resolves to the file that owns its axis; the other copy is reported and
+# discarded, so a stray duplicate cannot silently change the build.
 #
 # Filename mismatches warn rather than fail, because a multi-architecture file
 # legitimately names one target and carries several. Genuine errors — an
@@ -22,15 +23,17 @@ set -uo pipefail
 ARCH_ENV_FILE=''
 ROCM_ENV_FILE=''
 CONFIG_ENV_FILE=''
+LLAMACPP_ENV_FILE=''
 SOURCE_DIR=''
 DRY_RUN='no'
 NO_CACHE='no'
 VERBOSE='no'
 
-# Resolved absolute paths of the three files, so ownership compares like with like.
+# Resolved absolute paths of the four files, so ownership compares like with like.
 ARCH_ENV_PATH=''
 ROCM_ENV_PATH=''
 CONFIG_ENV_PATH=''
+LLAMACPP_ENV_PATH=''
 
 # Directory holding this script, so the build can reference our Dockerfile.rocm
 # by absolute path while the build context stays the llama.cpp source tree.
@@ -49,9 +52,11 @@ declare -A KEY_AXIS=(
     [LD_LIBRARY_PATH]=rocm
     [CMAKE_BUILD_TYPE]=neutral
     [REGISTRY]=neutral
-    [LLAMA_CPP_VERSION]=neutral
+    [LLAMA_CPP_VERSION]=llamacpp
     [VERSION]=neutral
     [GGML_NATIVE]=neutral
+    [CMAKE_EXTRA_ARGS]=llamacpp
+    [LLAMA_ARG_PORT]=llamacpp
 )
 
 # Every key the build cannot proceed without, since the image reference or the
@@ -63,7 +68,7 @@ declare -a REQUIRED_KEYS=(
 )
 
 # Every file's own reading of every key, keyed by "<absolute path>|<KEY>".
-# Keeping all three files' values is what lets ownership pick the owning file's
+# Keeping all four files' values is what lets ownership pick the owning file's
 # value rather than whichever file happened to be read first.
 declare -A FILE_VALUE=()
 
@@ -97,7 +102,7 @@ readonly VERSION_TOKEN_PREFIX='amd-'
 readonly LLAMA_CPP_REPOSITORY='https://github.com/ggml-org/llama.cpp.git'
 readonly UPSTREAM_DOCKERFILE_PATH='.devops/rocm.Dockerfile'
 
-USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --config-env <path> [--source <path>] [--dry-run] [--no-cache] [--verbose] [--set KEY=VALUE ...]"
+USAGE_MESSAGE="usage: $(basename "$0") --arch-env <path> --rocm-env <path> --llamacpp-env <path> --config-env <path> [--source <path>] [--dry-run] [--no-cache] [--verbose] [--set KEY=VALUE ...]"
 
 die() {
     printf '%s: %s\n' "$(basename "$0")" "$1" >&2
@@ -116,13 +121,14 @@ axis_owning() {
     printf '%s' "${KEY_AXIS[$key]:-neutral}"
 }
 
-# Report the path of the file that owns an axis. Callers pass one of arch, rocm
-# or neutral, which are the only values KEY_AXIS can hold.
+# Report the path of the file that owns an axis. Callers pass one of arch,
+# rocm, llamacpp or neutral, which are the only values KEY_AXIS can hold.
 file_owning_axis() {
     case "$1" in
-        arch)    printf '%s' "$ARCH_ENV_PATH" ;;
-        rocm)    printf '%s' "$ROCM_ENV_PATH" ;;
-        neutral) printf '%s' "$CONFIG_ENV_PATH" ;;
+        arch)     printf '%s' "$ARCH_ENV_PATH" ;;
+        rocm)     printf '%s' "$ROCM_ENV_PATH" ;;
+        llamacpp) printf '%s' "$LLAMACPP_ENV_PATH" ;;
+        neutral)  printf '%s' "$CONFIG_ENV_PATH" ;;
         *)       die "internal error: unknown ownership axis '$1'." ;;
     esac
 }
@@ -164,7 +170,7 @@ apply_ownership() {
         axis="$(axis_owning "$key")"
         owner_path="$(file_owning_axis "$axis")"
         owner_value="$(value_from_file "$owner_path" "$key")"
-        for other_path in "${ARCH_ENV_PATH}" "${ROCM_ENV_PATH}" "${CONFIG_ENV_PATH}"; do
+        for other_path in "${ARCH_ENV_PATH}" "${ROCM_ENV_PATH}" "${CONFIG_ENV_PATH}" "${LLAMACPP_ENV_PATH}"; do
             [ "$other_path" = "$owner_path" ] && continue
             other_value="$(value_from_file "$other_path" "$key")"
             [ -z "$other_value" ] && continue
@@ -178,6 +184,7 @@ apply_ownership() {
             RESOLVED_VALUE["$key"]="$(value_from_file "${ARCH_ENV_PATH}" "$key")"
             [ -n "${RESOLVED_VALUE[$key]}" ] || RESOLVED_VALUE["$key"]="$(value_from_file "${ROCM_ENV_PATH}" "$key")"
             [ -n "${RESOLVED_VALUE[$key]}" ] || RESOLVED_VALUE["$key"]="$(value_from_file "${CONFIG_ENV_PATH}" "$key")"
+            [ -n "${RESOLVED_VALUE[$key]}" ] || RESOLVED_VALUE["$key"]="$(value_from_file "${LLAMACPP_ENV_PATH}" "$key")"
         fi
     done
 }
@@ -200,7 +207,7 @@ apply_shell_fallback() {
         [ -n "$shell_value" ] || continue
         RESOLVED_VALUE["$key"]="$shell_value"
         SHELL_ADOPTED["$key"]=1
-        warn "key $key is absent from all three configuration files, so the exported shell value is used. Set it in a file or via --set to silence this."
+        warn "key $key is absent from all four configuration files, so the exported shell value is used. Set it in a file or via --set to silence this."
     done
 }
 
@@ -218,7 +225,7 @@ apply_cli_overrides() {
         resolved_value="${RESOLVED_VALUE[$key]:-}"
         if [ -n "$resolved_value" ] && [ "$resolved_value" != "$cli_value" ]; then
             losing_files=""
-            for file_path in "$ARCH_ENV_PATH" "$ROCM_ENV_PATH" "$CONFIG_ENV_PATH"; do
+            for file_path in "$ARCH_ENV_PATH" "$ROCM_ENV_PATH" "$CONFIG_ENV_PATH" "$LLAMACPP_ENV_PATH"; do
                 file_value="$(value_from_file "$file_path" "$key")"
                 [ -n "$file_value" ] || continue
                 losing_files="$losing_files '$file_path'"
@@ -243,6 +250,35 @@ require_keys_present() {
     for required_key in "${REQUIRED_KEYS[@]}"; do
         [ -n "${RESOLVED_VALUE[$required_key]:-}" ] || \
             die "required key $required_key is absent after reading configuration files, shell fallback, and --set overrides. The image reference or compiler target depends on it, so the build cannot proceed without it."
+    done
+}
+
+# Reject a key in the llama.cpp version file that reaches no build argument.
+# docker build only warns about an unknown --build-arg and carries on, so a
+# typo here would silently do nothing. A key qualifies when an axis owns it
+# (ownership and the stray-copy warning already cover it) or when
+# Dockerfile.rocm declares a matching ARG, which is how a version-specific
+# flag is wired into the build. Both checks read this repository's own files,
+# so a key valid for the current Dockerfile passes with no network access.
+reject_unknown_llamacpp_keys() {
+    local dockerfile_line stored_key key
+    [ -r "$SCRIPT_DIR/Dockerfile.rocm" ] || \
+        die "cannot read '$SCRIPT_DIR/Dockerfile.rocm' to validate keys in '$LLAMACPP_ENV_PATH': the version file's keys are checked against its ARG declarations, so the build cannot proceed without it."
+    declare -A declared_args=()
+    while IFS= read -r dockerfile_line; do
+        if [[ "$dockerfile_line" =~ ^[[:space:]]*ARG[[:space:]]+([A-Za-z0-9_]+) ]]; then
+            declared_args["${BASH_REMATCH[1]}"]=1
+        fi
+    done < "$SCRIPT_DIR/Dockerfile.rocm"
+    for stored_key in "${!FILE_VALUE[@]}"; do
+        case "$stored_key" in
+            "$LLAMACPP_ENV_PATH|"*) ;;
+            *) continue ;;
+        esac
+        key="${stored_key#*|}"
+        [ -n "${KEY_AXIS[$key]:-}" ] && continue
+        [ -n "${declared_args[$key]:-}" ] && continue
+        die "key $key is set in '$LLAMACPP_ENV_PATH' but is not a build argument: Dockerfile.rocm declares no ARG $key and no axis owns it, so docker would ignore it and the build would silently lose the setting. Fix the key, add 'ARG $key' to Dockerfile.rocm, or give the key an axis in KEY_AXIS."
     done
 }
 
@@ -332,15 +368,16 @@ parse_arguments() {
                 CLI_VALUE["$set_key"]="$set_value"
                 shift 2
                 ;;
-            --arch-env|--rocm-env|--config-env|--source)
+            --arch-env|--rocm-env|--config-env|--llamacpp-env|--source)
                 flag_name="$1"
                 flag_value="${2:-}"
                 [ -n "$flag_value" ] || die "flag $flag_name requires a path. $USAGE_MESSAGE"
                 case "$flag_name" in
-                    --arch-env)   ARCH_ENV_FILE="$flag_value" ;;
-                    --rocm-env)   ROCM_ENV_FILE="$flag_value" ;;
-                    --config-env) CONFIG_ENV_FILE="$flag_value" ;;
-                    --source)     SOURCE_DIR="$flag_value" ;;
+                    --arch-env)     ARCH_ENV_FILE="$flag_value" ;;
+                    --rocm-env)     ROCM_ENV_FILE="$flag_value" ;;
+                    --config-env)   CONFIG_ENV_FILE="$flag_value" ;;
+                    --llamacpp-env) LLAMACPP_ENV_FILE="$flag_value" ;;
+                    --source)       SOURCE_DIR="$flag_value" ;;
                 esac
                 shift 2
                 ;;
@@ -351,9 +388,10 @@ parse_arguments() {
             *)           die "unrecognised argument '$1'. $USAGE_MESSAGE" ;;
         esac
     done
-    [ -n "$ARCH_ENV_FILE" ]   || die "--arch-env was not supplied. $USAGE_MESSAGE"
-    [ -n "$ROCM_ENV_FILE" ]   || die "--rocm-env was not supplied. $USAGE_MESSAGE"
-    [ -n "$CONFIG_ENV_FILE" ] || die "--config-env was not supplied. $USAGE_MESSAGE"
+    [ -n "$ARCH_ENV_FILE" ]     || die "--arch-env was not supplied. $USAGE_MESSAGE"
+    [ -n "$ROCM_ENV_FILE" ]     || die "--rocm-env was not supplied. $USAGE_MESSAGE"
+    [ -n "$CONFIG_ENV_FILE" ]   || die "--config-env was not supplied. $USAGE_MESSAGE"
+    [ -n "$LLAMACPP_ENV_FILE" ] || die "--llamacpp-env was not supplied. $USAGE_MESSAGE"
     # --source is optional: when omitted the build fetches LLAMA_CPP_VERSION
     # into the cache after resolution, so only a supplied path is validated here.
     [ -z "$SOURCE_DIR" ] || [ -d "$SOURCE_DIR" ] || die "source tree '$SOURCE_DIR' is not a directory. Pass the llama.cpp repository root, or omit --source to fetch LLAMA_CPP_VERSION automatically."
@@ -388,10 +426,13 @@ main() {
     ARCH_ENV_PATH="$(readlink -f "$ARCH_ENV_FILE")"
     ROCM_ENV_PATH="$(readlink -f "$ROCM_ENV_FILE")"
     CONFIG_ENV_PATH="$(readlink -f "$CONFIG_ENV_FILE")"
+    LLAMACPP_ENV_PATH="$(readlink -f "$LLAMACPP_ENV_FILE")"
 
     load_configuration_file "$ARCH_ENV_PATH"
     load_configuration_file "$ROCM_ENV_PATH"
     load_configuration_file "$CONFIG_ENV_PATH"
+    load_configuration_file "$LLAMACPP_ENV_PATH"
+    reject_unknown_llamacpp_keys
     apply_ownership
     apply_shell_fallback
     apply_cli_overrides

@@ -19,7 +19,7 @@ not editing the script or Dockerfile.
 
 ## Build config files
 
-`build-rocm.sh` is driven by three configuration files, each owning one axis of
+`build-rocm.sh` is driven by four configuration files, each owning one axis of
 the build. Nothing about the image is hard-coded in the script or in
 `Dockerfile.rocm`.
 
@@ -27,7 +27,8 @@ the build. Nothing about the image is hard-coded in the script or in
 |---|---|
 | `conf/amd-gfx1200.env` | Anything that changes with the GPU card |
 | `conf/amd-7.14.1.env`, `conf/amd-10.1.0.env` | Anything that changes with the ROCm release |
-| `conf/build-config.env` | Everything else (build type, versions, registry) |
+| `conf/llamacpp-v0.5.0.env` | Anything that changes with the llama.cpp version |
+| `conf/build-config.env` | Everything else (build type, image version, registry) |
 
 A key appearing in more than one file resolves to whichever file owns that
 axis. The other copy is reported and discarded.
@@ -59,13 +60,24 @@ axis. The other copy is reported and discarded.
 | `ROCM_CORE_DIR` | Version-scoped install root inside the base (e.g. `/opt/rocm/core-7.14`); source tree for the trimmed runtime copy |
 | `LD_LIBRARY_PATH` | Runtime library path the base image does not register via `ld.so.conf`; without it `libggml-hip.so` cannot resolve `libamdhip64` |
 
+### llama.cpp versions
+
+| File | Build argument | llama.cpp version |
+|---|---|---|
+| `conf/llamacpp-v0.5.0.env` | `--llamacpp-env` | `v0.5.0` |
+
+| Variable | Used for |
+|---|---|
+| `LLAMA_CPP_VERSION` | llama.cpp tag the source checkout must be at; part of the image tag |
+| `CMAKE_EXTRA_ARGS` | Pass-through for additional `-D` flags a particular version needs; owned by this axis so the flags follow the version |
+| `LLAMA_ARG_PORT` | Port the image serves on; upstream reads it for `--port`, and the healthcheck expands the same value |
+
 ### Neutral axis (`conf/build-config.env`)
 
 | Variable | Used for |
 |---|---|
 | `CMAKE_BUILD_TYPE` | CMake build type (`Release`) |
 | `REGISTRY` | Registry host for the image reference (no scheme, no trailing slash) |
-| `LLAMA_CPP_VERSION` | llama.cpp tag the source checkout must be at; part of the image tag |
 | `VERSION` | Image version tag published alongside `latest` |
 | `GGML_NATIVE` | `OFF`, so the CPU backend is not tuned to the build host |
 
