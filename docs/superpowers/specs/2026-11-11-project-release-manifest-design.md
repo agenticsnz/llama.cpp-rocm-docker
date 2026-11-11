@@ -31,7 +31,7 @@ Issue #19 asks for one file that states the project's release state, so that the
 - The workspace repository is `agenticsnz/llama.cpp-rocm-docker`, and the build script and tests use `conf/`.
 - `yq` v4 is the reader and writer. Ubuntu's `yq` package is a different tool and is not used (see `.devcontainer/Dockerfile.plain`).
 - GitHub's hosted Ubuntu images list `yq 4.54.1` in their installed tools ([Ubuntu 24.04 readme](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md), [Ubuntu 26.04 readme](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md), "Tools" section). These docs do not name the `yq` implementation.
-- `yq` syntax follows the upstream README, [mikefarah/yq v4.54.1, "Basic Operations"](https://github.com/mikefarah/yq/blob/v4.54.1/README.md): `yq '<expr>' file` reads, and `yq -i '<expr>' file` updates in place. The operators used here (`+=`, `del`, `contains`, `keys`, `tag`) were checked against v4.54.1 in this design's verification.
+- `yq` syntax follows the upstream README, [mikefarah/yq v4.54.1, "Basic Operations"](https://github.com/mikefarah/yq/blob/v4.54.1/README.md): `yq '<expr>' file` reads, and `yq -i '<expr>' file` updates in place. The operators used here (`+=`, `del`, `contains`, `keys`, `tag`) were checked against v4.54.1 in this design's verification, on block sequences: `+=` and `del` keep the block style, and the axis values read back in file order.
 
 ## Approaches
 
@@ -48,11 +48,16 @@ Issue #19 asks for one file that states the project's release state, so that the
 ```yaml
 release_version: "1.2.0"
 support:
-  llama-cpp: [llamacpp-v0.5.0]
-  amd-rocm: [amd-7.14.1, amd-10.1.0]
-  amd-arch: [amd-gfx1200]
+  llama-cpp:
+    - llamacpp-v0.5.0
+  amd-rocm:
+    - amd-7.14.1
+    - amd-10.1.0
+  amd-arch:
+    - amd-gfx1200
 ```
 
+- Each axis is a YAML block sequence, one entry per line. In the scenarios below, `[a, b]` denotes a list holding the values `a` and `b`; it is not the file syntax.
 - `release_version` is always double-quoted. An unquoted value such as `1.2` is read as a number (see R6), and the quotes keep it a string.
 - Each `support` entry is a stem. The manifest holds no directory: the script's `CONF_DIR` constant supplies `conf/`, so `conf/` is never written into the manifest.
 
@@ -348,7 +353,7 @@ Scenario: Setting release_version rejects a value that is not MAJOR.MINOR.PATCH
 
 ```gherkin
 Scenario: Listing amd-rocm prints its values in file order
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0
   When scripts/release_manifest_tool.sh --list amd-rocm is run
   Then stdout is "amd-7.14.1" followed by "amd-10.1.0", one per line
   And the exit status is 0
@@ -372,7 +377,7 @@ Scenario: Listing an unknown top-level name is a usage error
 
 ```gherkin
 Scenario: Adding a new value appends it to the axis list
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0
   And conf/amd-8.0.0.env exists
   When scripts/release_manifest_tool.sh --add amd-rocm amd-8.0.0 is run
   Then the amd-rocm list is [amd-7.14.1, amd-10.1.0, amd-8.0.0]
@@ -383,7 +388,7 @@ Scenario: Adding a new value appends it to the axis list
 
 ```gherkin
 Scenario: Adding a value already in the axis list is rejected
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0
   When scripts/release_manifest_tool.sh --add amd-rocm amd-10.1.0 is run
   Then the exit status is 1
   And the amd-rocm list is unchanged
@@ -393,7 +398,7 @@ Scenario: Adding a value already in the axis list is rejected
 
 ```gherkin
 Scenario: Adding a value with no matching env file is rejected
-  Given build-conf/project-release.yaml contains amd-arch: [amd-gfx1200]
+  Given build-conf/project-release.yaml has an amd-arch list of amd-gfx1200
   And conf/amd-gfx9999.env does not exist
   When scripts/release_manifest_tool.sh --add amd-arch amd-gfx9999 is run
   Then the exit status is 1
@@ -408,7 +413,7 @@ Scenario: Adding a value with no matching env file is rejected
 
 ```gherkin
 Scenario: Deleting a value removes that value from the axis list
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0
   When scripts/release_manifest_tool.sh --delete amd-rocm amd-10.1.0 is run
   Then the amd-rocm list is [amd-7.14.1]
   And the exit status is 0
@@ -418,7 +423,7 @@ Scenario: Deleting a value removes that value from the axis list
 
 ```gherkin
 Scenario: Deleting a value leaves the other axis lists unchanged
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0] and amd-arch: [amd-gfx1200]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0, and an amd-arch list of amd-gfx1200
   When scripts/release_manifest_tool.sh --delete amd-rocm amd-10.1.0 is run
   Then the amd-arch list is [amd-gfx1200]
 ```
@@ -427,7 +432,7 @@ Scenario: Deleting a value leaves the other axis lists unchanged
 
 ```gherkin
 Scenario: Deleting a value not in the axis list is rejected
-  Given build-conf/project-release.yaml contains amd-rocm: [amd-7.14.1, amd-10.1.0]
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-10.1.0
   When scripts/release_manifest_tool.sh --delete amd-rocm amd-9.9.9 is run
   Then the exit status is 1
   And the amd-rocm list is unchanged
