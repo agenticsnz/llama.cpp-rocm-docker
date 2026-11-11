@@ -1,0 +1,31 @@
+ARG BASE_IMAGE=mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    gnupg \
+    jq \
+    gawk \
+    lsb-release \
+    make \
+    shellcheck \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-ca-certificates
+
+# Install Node.js 22.x (LTS) from NodeSource (apt's npm ships Node 18)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+USER vscode
+
+RUN curl -fsSL https://opencode.ai/v2/install | bash
