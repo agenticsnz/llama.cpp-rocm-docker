@@ -54,7 +54,7 @@ support:
 ```
 
 - `release_version` is always double-quoted. An unquoted value such as `1.2` is read as a number (see R6), and the quotes keep it a string.
-- Each `support` entry names a file `conf/<entry>.env`.
+- Each `support` entry is a stem. The manifest holds no directory: the script's `CONF_DIR` constant supplies `conf/`, so `conf/` is never written into the manifest.
 
 ### The helper script
 
@@ -82,6 +82,7 @@ set -euo pipefail
 
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly MANIFEST="$REPO_ROOT/build-conf/project-release.yaml"
+readonly CONF_DIR="$REPO_ROOT/conf"
 readonly AXES="llama-cpp amd-rocm amd-arch"
 
 usage() {
@@ -132,7 +133,7 @@ list_axis_values() {
 }
 
 add_axis_value() {
-    # Checks: value not already in the list; conf/<value>.env exists.
+    # Checks: value not already in the list; "$CONF_DIR/<value>.env" exists.
     # yq -i '.support.<axis> += ["<value>"]' "$MANIFEST"
     return 1
 }
@@ -470,7 +471,7 @@ Scenario: Adding to an unknown axis is a usage error
 
 - The exact `yq` invocation in each function, beyond the expressions above.
 - The scenarios that touch the file run against a copy of the tree (`scripts/`, `build-conf/`, `conf/`) in `.tmp/`, so the committed manifest is never changed by a test. The script resolves the manifest relative to its own location, so the copy needs no path override.
-- The `conf/<value>.env` existence check in `--add` uses the copy's `conf/` directory.
+- The `conf/<value>.env` existence check in `--add` uses `CONF_DIR`, which resolves to the copy's `conf/` directory.
 
 ## Calls I made
 
@@ -483,3 +484,4 @@ Scenario: Adding to an unknown axis is a usage error
 - **Version format:** `--set` accepts `MAJOR.MINOR.PATCH` with digits only. This is my choice; the issue does not state a format.
 - **`--add` checks:** the value must not already be listed, and `conf/<value>.env` must exist. The second check is my choice, so that the list cannot name a missing file.
 - **Exit codes:** `0` success, `1` check failed with the file unchanged, `2` usage error. This is my choice.
+- **`conf/` as a constant:** the script defines `CONF_DIR` once, and the manifest holds only axis stems. This follows your instruction.
