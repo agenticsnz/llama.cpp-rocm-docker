@@ -1,0 +1,33 @@
+{
+  "name": "llama.cpp-rocm-docker",
+  "dockerComposeFile": "../plain-compose.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/llama.cpp-rocm-docker",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode-remote.remote-containers",
+        "ms-azuretools.vscode-containers",
+        "redhat.vscode-yaml",
+        "vstirbu.vscode-mermaid-preview",
+        "timonwong.shellcheck",
+        "GitHub.vscode-pull-request-github",
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        "editor.formatOnSave": false,
+        "chat.disableAIFeatures": true,
+        "github.copilot.enable": {
+          "*": false
+        }
+      }
+    }
+  },
+
+  "initializeCommand": "mkdir -p ${localEnv:HOME}/.config/opencode 2> /dev/null && touch ${localWorkspaceFolder}/.devcontainer/.env 2> /dev/null && mkdir -p ${localWorkspaceFolder}/.local/state/opencode ${localWorkspaceFolder}/.local/share/opencode ${localWorkspaceFolder}/.config/opencode"
+}
