@@ -718,6 +718,79 @@ echo "== overriding VERSION with --set names the manifest in its error =="
 # Scenario: the rejection tells the user to change release_version in the manifest.
 expect_stderr "$SCRATCH/xe4" "build-conf/project-release.yaml"
 
+set_is_dev() {  # set_is_dev <tree> <literal>: replaces the copy's is_dev line with the literal
+    sed -i '/^is_dev:/d' "$1/build-conf/project-release.yaml"
+    printf 'is_dev: %s\n' "$2" >> "$1/build-conf/project-release.yaml"
+}
+has_latest_tag() {  # has_latest_tag <out>: succeeds when a --tag line ends in :latest
+    grep -q -- '^--tag .*:latest$' "$1"
+}
+
+echo
+echo "== a missing is_dev exits non-zero =="
+TREE="$(copy_tree no-is-dev)"
+sed -i '/^is_dev:/d' "$TREE/build-conf/project-release.yaml"
+rc=$(run_copy "$TREE" "$SCRATCH/d1" "$SCRATCH/de1")
+if [ "$rc" != "0" ]; then note_pass "exit status is $rc"; else note_fail "exit was 0 without is_dev"; fi
+
+echo
+echo "== a missing is_dev is named in the error =="
+TREE="$(copy_tree no-is-dev-named)"
+sed -i '/^is_dev:/d' "$TREE/build-conf/project-release.yaml"
+run_copy "$TREE" "$SCRATCH/d2" "$SCRATCH/de2" >/dev/null
+expect_stderr "$SCRATCH/de2" "build-conf/project-release.yaml"
+
+echo
+echo "== a dev build tags the image with the -dev suffix =="
+TREE="$(copy_tree dev-tag)"
+set_is_dev "$TREE" true
+run_copy "$TREE" "$SCRATCH/d3" "$SCRATCH/de3" >/dev/null
+expect_line "$SCRATCH/d3" "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION-dev"
+
+echo
+echo "== a non-dev build tags the image without a suffix =="
+TREE="$(copy_tree nondev-tag)"
+set_is_dev "$TREE" false
+run_copy "$TREE" "$SCRATCH/d4" "$SCRATCH/de4" >/dev/null
+expect_line "$SCRATCH/d4" "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
+
+echo
+echo "== a dev build does not publish the latest tag =="
+TREE="$(copy_tree dev-latest)"
+set_is_dev "$TREE" true
+run_copy "$TREE" "$SCRATCH/d5" "$SCRATCH/de5" >/dev/null
+if has_latest_tag "$SCRATCH/d5"; then note_fail "dev build publishes a latest tag"; else note_pass "dev build publishes no latest tag"; fi
+
+echo
+echo "== a non-dev build publishes the latest tag =="
+TREE="$(copy_tree nondev-latest)"
+set_is_dev "$TREE" false
+run_copy "$TREE" "$SCRATCH/d6" "$SCRATCH/de6" >/dev/null
+if has_latest_tag "$SCRATCH/d6"; then note_pass "non-dev build publishes a latest tag"; else note_fail "non-dev build publishes no latest tag"; fi
+
+echo
+echo "== a non-boolean is_dev exits non-zero =="
+TREE="$(copy_tree quoted-is-dev)"
+set_is_dev "$TREE" '"yes"'
+rc=$(run_copy "$TREE" "$SCRATCH/d7" "$SCRATCH/de7")
+if [ "$rc" != "0" ]; then note_pass "exit status is $rc"; else note_fail "exit was 0 for is_dev \"yes\""; fi
+
+echo
+echo "== a non-boolean is_dev is named in the error =="
+TREE="$(copy_tree quoted-is-dev-named)"
+set_is_dev "$TREE" '"yes"'
+run_copy "$TREE" "$SCRATCH/d8" "$SCRATCH/de8" >/dev/null
+expect_stderr "$SCRATCH/de8" "build-conf/project-release.yaml"
+
+echo
+echo "== is_dev True with a capital letter exits non-zero and names the manifest =="
+TREE="$(copy_tree capital-is-dev)"
+set_is_dev "$TREE" True
+rc=$(run_copy "$TREE" "$SCRATCH/d9" "$SCRATCH/de9")
+if [ "$rc" != "0" ]; then note_pass "exit status is $rc"; else note_fail "exit was 0 for is_dev: True"; fi
+run_copy "$TREE" "$SCRATCH/d10" "$SCRATCH/de10" >/dev/null
+expect_stderr "$SCRATCH/de10" "build-conf/project-release.yaml"
+
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

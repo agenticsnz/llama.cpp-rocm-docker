@@ -86,6 +86,8 @@ declare -A RESOLVED_VALUE=()
 IMAGE_VERSION=''
 # Version part of the image tag, equal to IMAGE_VERSION until a dev suffix is added.
 IMAGE_TAG=''
+# Whether this is a dev build, from is_dev in the release manifest: yes or no.
+IMAGE_IS_DEV=''
 
 # Image reference components, fixed by this project's naming scheme.
 readonly IMAGE_LABEL_ROOT='agenticsnz'
@@ -364,22 +366,36 @@ read_manifest_key() {
 
 # Set IMAGE_VERSION from release_version in the manifest and check it is
 # MAJOR.MINOR.PATCH digits, since the tag and the image reference depend on it.
-# The read runs in a subshell, so a failure there exits from the subshell and
-# is turned into an exit of this script here.
+# Set IMAGE_IS_DEV from is_dev in the manifest, which must be true or false, and
+# derive IMAGE_TAG from both. The reads run in a subshell, so a failure there
+# exits from the subshell and is turned into an exit of this script here.
 resolve_image_version() {
     IMAGE_VERSION="$(read_manifest_key release_version)" || exit 2
     [[ "$IMAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
         die "release_version '$IMAGE_VERSION' in build-conf/project-release.yaml must be MAJOR.MINOR.PATCH digits."
+    local is_dev
+    is_dev="$(read_manifest_key is_dev)" || exit 2
+    case "$is_dev" in
+        true)  IMAGE_IS_DEV='yes' ;;
+        false) IMAGE_IS_DEV='no' ;;
+        *) die "is_dev '$is_dev' in build-conf/project-release.yaml must be true or false." ;;
+    esac
     IMAGE_TAG="$IMAGE_VERSION"
+    if [ "$IMAGE_IS_DEV" = 'yes' ]; then
+        IMAGE_TAG="$IMAGE_VERSION-dev"
+    fi
 }
 
-# Emit the two tags the build publishes: the pinned version, which deployments
+# Emit the tags the build publishes: the pinned version, which deployments
 # reference, and latest, which is overwritten by the next build and is therefore
-# a convenience reference rather than a pinnable one.
+# a convenience reference rather than a pinnable one. A dev build's version tag
+# carries the -dev suffix and does not move latest.
 emit_tag_arguments() {
     local image_reference="$1"
     printf -- '--tag %s:%s\n' "$image_reference" "$IMAGE_TAG"
-    printf -- '--tag %s:%s\n' "$image_reference" "$TAG_LATEST"
+    if [ "$IMAGE_IS_DEV" = 'no' ]; then
+        printf -- '--tag %s:%s\n' "$image_reference" "$TAG_LATEST"
+    fi
 }
 
 parse_arguments() {
@@ -496,7 +512,7 @@ main() {
         build_arguments+=(--build-arg "$resolved_key=${RESOLVED_VALUE[$resolved_key]}")
     done
     build_arguments+=(--tag "$image_reference:$IMAGE_TAG")
-    build_arguments+=(--tag "$image_reference:$TAG_LATEST")
+    [ "$IMAGE_IS_DEV" = 'no' ] && build_arguments+=(--tag "$image_reference:$TAG_LATEST")
     # Cache bypass sits with the other docker options, ahead of the -f flag
     # and the context path, which docker requires last.
     [ "$NO_CACHE" = 'yes' ] && build_arguments+=(--no-cache)
