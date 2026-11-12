@@ -242,5 +242,79 @@ else
 fi
 
 echo
+echo "== add appends a value to an axis =="
+# Scenario: Adding a new value appends it to the axis list
+fixture="$(make_fixture add-new-value)"
+: > "$fixture/conf/amd-8.0.0.env"
+"$fixture/scripts/release_manifest_tool.sh" --add amd-rocm amd-8.0.0 2>/dev/null
+status=$?
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null)"
+if [ "$status" -ne 0 ]; then
+    note_fail "--add amd-rocm amd-8.0.0: exit $status, expected 0"
+elif [ "$out" != "$(printf 'amd-7.14.1\namd-10.1.0\namd-8.0.0')" ]; then
+    note_fail "--add amd-rocm amd-8.0.0: list '$out', expected amd-7.14.1, amd-10.1.0, amd-8.0.0"
+else
+    note_pass "--add amd-rocm amd-8.0.0 appends the value and exits 0"
+fi
+
+# Scenario: Adding a value already in the axis list is rejected
+fixture="$(make_fixture add-duplicate)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --add amd-rocm amd-10.1.0 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--add duplicate amd-10.1.0: exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--add duplicate amd-10.1.0: manifest changed"
+else
+    note_pass "--add duplicate amd-10.1.0 exits 1 and leaves the manifest unchanged"
+fi
+
+# Scenario: Adding a value with no matching env file is rejected
+fixture="$(make_fixture add-no-env-file)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --add amd-arch amd-gfx9999 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--add amd-arch amd-gfx9999: exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--add amd-arch amd-gfx9999: manifest changed"
+else
+    note_pass "--add amd-arch amd-gfx9999 exits 1 and leaves the manifest unchanged"
+fi
+
+# Review focus: a value with a double quote is stored and listed exactly
+fixture="$(make_fixture add-quote-character)"
+: > "$fixture/conf/amd\"x.env"
+"$fixture/scripts/release_manifest_tool.sh" --add amd-rocm 'amd"x' 2>/dev/null
+status=$?
+last="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null | tail -n 1)"
+if [ "$status" -ne 0 ]; then
+    note_fail "--add amd-rocm 'amd\"x': exit $status, expected 0"
+elif [ "$last" != 'amd"x' ]; then
+    note_fail "--add amd-rocm 'amd\"x': last listed value '$last', expected amd\"x"
+else
+    note_pass "--add amd-rocm 'amd\"x' exits 0 and lists the value exactly"
+fi
+
+# CONF_DIR from the environment is the directory the env file check reads
+fixture="$(make_fixture add-conf-dir-override)"
+override="$FIXTURE_ROOT/add-conf-dir-override-conf"
+mkdir -p "$override"
+: > "$override/amd-8.0.0.env"
+CONF_DIR="$override" "$fixture/scripts/release_manifest_tool.sh" --add amd-rocm amd-8.0.0 2>/dev/null
+status=$?
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null)"
+if [ "$status" -ne 0 ]; then
+    note_fail "CONF_DIR override: exit $status, expected 0"
+elif ! grep -qxF 'amd-8.0.0' <<<"$out"; then
+    note_fail "CONF_DIR override: amd-8.0.0 not added"
+else
+    note_pass "CONF_DIR override: env file in that directory is accepted"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

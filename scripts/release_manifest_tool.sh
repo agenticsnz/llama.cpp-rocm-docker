@@ -67,10 +67,21 @@ list_axis_values() {
     yq -r ".support.$1[]" "$MANIFEST"
 }
 
+axis_value_exists() {
+    # Returns 0 when $2 is in the list for axis $1.
+    manifest_exists
+    V="$2" yq -e ".support.$1[] | select(. == strenv(V))" "$MANIFEST" >/dev/null 2>&1
+}
+
+env_file_exists() {
+    # Returns 0 when "$CONF_DIR/$1.env" is a regular file.
+    [ -f "$CONF_DIR/$1.env" ]
+}
+
 add_axis_value() {
-    # Checks: value not already in the list; "$CONF_DIR/<value>.env" exists.
-    # V="<value>" yq -i '.support.<axis> += [strenv(V)]' "$MANIFEST"
-    return 1
+    axis_value_exists "$1" "$2" && check_failed "already in $1: $2"
+    env_file_exists "$2" || check_failed "no env file for $2: $CONF_DIR/$2.env"
+    V="$2" yq -i ".support.$1 += [strenv(V)]" "$MANIFEST"
 }
 
 delete_axis_value() {
