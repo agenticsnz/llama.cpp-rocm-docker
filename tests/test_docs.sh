@@ -44,6 +44,15 @@ for doc in "$README" "$CONTRIBUTING"; do
 done
 
 echo
+echo "== README does not place the image version in conf/build-config.env =="
+# Scenario: The README neutral-axis table does not name VERSION
+if grep -qE '^\|.*conf/build-config\.env.*image version' "$README"; then
+    note_fail "README places the image version in conf/build-config.env"
+else
+    note_pass "README does not place the image version in conf/build-config.env"
+fi
+
+echo
 echo "== README links the contribution guide =="
 if grep -qF "CONTRIBUTING.md" "$README"; then note_pass "README links CONTRIBUTING.md"
 else note_fail "README does not link CONTRIBUTING.md"; fi

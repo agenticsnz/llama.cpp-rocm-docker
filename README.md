@@ -28,7 +28,7 @@ the build. Nothing about the image is hard-coded in the script or in
 | `conf/amd-gfx1200.env` | Anything that changes with the GPU card |
 | `conf/amd-7.14.1.env`, `conf/amd-10.1.0.env` | Anything that changes with the ROCm release |
 | `conf/llamacpp-v0.5.0.env` | Anything that changes with the llama.cpp version |
-| `conf/build-config.env` | Everything else (build type, image version, registry) |
+| `conf/build-config.env` | Everything else (build type, registry) |
 
 A key appearing in more than one file resolves to whichever file owns that
 axis. The other copy is reported and discarded.
