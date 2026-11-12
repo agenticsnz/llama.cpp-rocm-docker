@@ -53,7 +53,6 @@ declare -A KEY_AXIS=(
     [CMAKE_BUILD_TYPE]=neutral
     [REGISTRY]=neutral
     [LLAMA_CPP_VERSION]=llamacpp
-    [VERSION]=neutral
     [GGML_NATIVE]=neutral
     [CMAKE_EXTRA_ARGS]=llamacpp
     [LLAMA_ARG_PORT]=llamacpp
@@ -62,7 +61,7 @@ declare -A KEY_AXIS=(
 # Every key the build cannot proceed without, since the image reference or the
 # compiler target depends on each.
 declare -a REQUIRED_KEYS=(
-    REGISTRY LLAMA_CPP_VERSION VERSION
+    REGISTRY LLAMA_CPP_VERSION
     GPU_TARGET ARCH_STRING
     ROCM_BASE ROCM_VERSION ROCM_CORE_DIR
 )
@@ -154,6 +153,10 @@ load_configuration_file() {
         value="${line#*"$ASSIGNMENT_SEPARATOR"}"
         key="${key//[[:space:]]/}"
         [ -z "$key" ] && continue
+        if [ "$key" = "VERSION" ]; then
+            warn "VERSION is read from build-conf/project-release.yaml, so the VERSION line in '$file_path' is ignored."
+            continue
+        fi
         FILE_VALUE["$file_path|$key"]="$value"
     done < "$file_path"
 }
@@ -390,6 +393,7 @@ parse_arguments() {
                 set_key="${set_argument%%"$ASSIGNMENT_SEPARATOR"*}"
                 set_key="${set_key//[[:space:]]/}"
                 [ -n "$set_key" ] || die "invalid --set value '$set_argument': key is empty. $USAGE_MESSAGE"
+                [ "$set_key" != "VERSION" ] || die "VERSION is read from build-conf/project-release.yaml. Change release_version there instead of passing --set VERSION."
                 set_value="${set_argument#*"$ASSIGNMENT_SEPARATOR"}"
                 CLI_VALUE["$set_key"]="$set_value"
                 shift 2

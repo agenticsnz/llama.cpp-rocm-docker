@@ -154,7 +154,6 @@ cat > "$SCRATCH/stray-version.env" <<'ENV'
 CMAKE_BUILD_TYPE=Release
 REGISTRY=ghcr.io
 LLAMA_CPP_VERSION=v9.9.9
-VERSION=1.1.1
 GGML_NATIVE=OFF
 ENV
 rc=$(run_dry "$SCRATCH/v2" "$SCRATCH/ve2" \
@@ -190,7 +189,6 @@ cat > "$SCRATCH/stray-port.env" <<'ENV'
 CMAKE_BUILD_TYPE=Release
 REGISTRY=ghcr.io
 LLAMA_ARG_PORT=9999
-VERSION=1.1.1
 GGML_NATIVE=OFF
 ENV
 rc=$(run_dry "$SCRATCH/p1" "$SCRATCH/pe1" \
@@ -214,7 +212,6 @@ cat > "$SCRATCH/extra-neutral.env" <<'ENV'
 CMAKE_BUILD_TYPE=Release
 REGISTRY=ghcr.io
 LLAMA_CPP_VERSION=v0.5.0
-VERSION=1.1.1
 GGML_NATIVE=OFF
 CMAKE_EXTRA_ARGS=-DSTRAY_FLAG=ON
 ENV
@@ -418,7 +415,6 @@ echo
 echo "== shell fallback adopted only when files omit a known key =="
 cat > "$SCRATCH/no-registry.env" <<'ENV'
 LLAMA_CPP_VERSION=v0.5.0
-VERSION=1.0.0
 CMAKE_BUILD_TYPE=Release
 GGML_NATIVE=OFF
 ENV
@@ -659,6 +655,68 @@ PATH=/usr/bin:/bin "$SCRIPT" --arch-env "$CONF/amd-gfx1200.env" --rocm-env "$CON
     --config-env "$CONF/build-config.env" --llamacpp-env "$CONF/llamacpp-v0.5.0.env" \
     --source "$SRC" --dry-run >"$SCRATCH/m11" 2>"$SCRATCH/me11"
 expect_stderr "$SCRATCH/me11" "yq"
+
+echo
+echo "== the build config file does not declare VERSION =="
+# Scenario: the axis-neutral file no longer owns the image version.
+count="$(grep -c '^VERSION=' "$CONF/build-config.env" || true)"
+if [ "$count" = "0" ]; then note_pass "build-config.env declares no VERSION"; else note_fail "build-config.env declares VERSION $count time(s)"; fi
+
+echo
+echo "== a VERSION line in the build config does not change the tag =="
+# Scenario: a stray VERSION line in a copy's build config is ignored for the tag.
+TREE="$(copy_tree version-line-tag)"
+printf 'VERSION=9.9.9\n' >> "$TREE/conf/build-config.env"
+rc=$(run_copy "$TREE" "$SCRATCH/x1" "$SCRATCH/xe1")
+if [ "$rc" = "0" ]; then note_pass "exit 0"; else note_fail "exit was $rc, want 0"; fi
+expect_line "$SCRATCH/x1" "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
+
+echo
+echo "== a VERSION line in the build config warns and names the manifest =="
+# Scenario: the ignored VERSION line is reported, naming the manifest as its source.
+expect_stderr "$SCRATCH/xe1" "VERSION is read from build-conf/project-release.yaml"
+
+echo
+echo "== a dry run emits no VERSION build argument =="
+# Scenario: VERSION is not passed to docker as a build argument.
+rc=$(run_dry "$SCRATCH/x2" "$SCRATCH/xe2" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env")
+if grep -q '^--build-arg VERSION=' "$SCRATCH/x2"; then
+    note_fail "dry run emits a --build-arg VERSION= line"
+else
+    note_pass "dry run emits no --build-arg VERSION= line"
+fi
+
+echo
+echo "== a shell VERSION export does not change the tag =="
+# Scenario: VERSION is absent from the shell fallback, so an exported value is not read.
+# shellcheck disable=SC2030,SC2031
+rc=$( ( export VERSION=9.9.9
+  run_dry "$SCRATCH/x3" "$SCRATCH/xe3" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" ) )
+if [ "$rc" = "0" ]; then note_pass "exit 0"; else note_fail "exit was $rc, want 0"; fi
+expect_line "$SCRATCH/x3" "--tag $EXPECTED_IMAGE_REF:$EXPECTED_IMAGE_VERSION"
+
+echo
+echo "== a shell VERSION export adds no VERSION build argument =="
+if grep -q '^--build-arg VERSION=' "$SCRATCH/x3"; then
+    note_fail "shell VERSION export produced a --build-arg VERSION= line"
+else
+    note_pass "shell VERSION export produced no --build-arg VERSION= line"
+fi
+
+echo
+echo "== overriding VERSION with --set exits non-zero =="
+# Scenario: --set VERSION is rejected rather than silently ignored.
+rc=$(run_dry "$SCRATCH/x4" "$SCRATCH/xe4" \
+    "$CONF/amd-gfx1200.env" "$CONF/amd-7.14.1.env" "$CONF/build-config.env" "$CONF/llamacpp-v0.5.0.env" \
+    --set VERSION=9.9.9)
+if [ "$rc" != "0" ]; then note_pass "exit status is $rc"; else note_fail "exit was 0 for --set VERSION"; fi
+
+echo
+echo "== overriding VERSION with --set names the manifest in its error =="
+# Scenario: the rejection tells the user to change release_version in the manifest.
+expect_stderr "$SCRATCH/xe4" "build-conf/project-release.yaml"
 
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
