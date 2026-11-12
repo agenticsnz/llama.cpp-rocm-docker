@@ -83,6 +83,11 @@ declare -A SHELL_ADOPTED=()
 # Surviving values after ownership is applied.
 declare -A RESOLVED_VALUE=()
 
+# Image version read from release_version in the release manifest.
+IMAGE_VERSION=''
+# Version part of the image tag, equal to IMAGE_VERSION until a dev suffix is added.
+IMAGE_TAG=''
+
 # Image reference components, fixed by this project's naming scheme.
 readonly IMAGE_LABEL_ROOT='agenticsnz'
 readonly IMAGE_REPOSITORY_NAME='llama.cpp'
@@ -344,12 +349,33 @@ emit_resolved_arguments() {
     done
 }
 
+# Print one key's value from the release manifest, read through the manifest
+# tool. Dies naming the manifest when yq is missing or the key cannot be read.
+read_manifest_key() {
+    local key="$1" tool_output
+    command -v yq >/dev/null 2>&1 || die "yq v4 is required on PATH to read build-conf/project-release.yaml."
+    tool_output="$("$SCRIPT_DIR/scripts/release_manifest_tool.sh" --get "$key" 2>&1)" || \
+        die "could not read '$key' from build-conf/project-release.yaml: $tool_output"
+    printf '%s' "$tool_output"
+}
+
+# Set IMAGE_VERSION from release_version in the manifest and check it is
+# MAJOR.MINOR.PATCH digits, since the tag and the image reference depend on it.
+# The read runs in a subshell, so a failure there exits from the subshell and
+# is turned into an exit of this script here.
+resolve_image_version() {
+    IMAGE_VERSION="$(read_manifest_key release_version)" || exit 2
+    [[ "$IMAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+        die "release_version '$IMAGE_VERSION' in build-conf/project-release.yaml must be MAJOR.MINOR.PATCH digits."
+    IMAGE_TAG="$IMAGE_VERSION"
+}
+
 # Emit the two tags the build publishes: the pinned version, which deployments
 # reference, and latest, which is overwritten by the next build and is therefore
 # a convenience reference rather than a pinnable one.
 emit_tag_arguments() {
     local image_reference="$1"
-    printf -- '--tag %s:%s\n' "$image_reference" "${RESOLVED_VALUE[VERSION]}"
+    printf -- '--tag %s:%s\n' "$image_reference" "$IMAGE_TAG"
     printf -- '--tag %s:%s\n' "$image_reference" "$TAG_LATEST"
 }
 
@@ -438,6 +464,7 @@ main() {
     apply_cli_overrides
     require_keys_present
     run_consistency_checks
+    resolve_image_version
 
     local image_reference
     image_reference="$(build_image_reference)"
@@ -464,7 +491,7 @@ main() {
     for resolved_key in $(printf '%s\n' "${!RESOLVED_VALUE[@]}" | sort); do
         build_arguments+=(--build-arg "$resolved_key=${RESOLVED_VALUE[$resolved_key]}")
     done
-    build_arguments+=(--tag "$image_reference:${RESOLVED_VALUE[VERSION]}")
+    build_arguments+=(--tag "$image_reference:$IMAGE_TAG")
     build_arguments+=(--tag "$image_reference:$TAG_LATEST")
     # Cache bypass sits with the other docker options, ahead of the -f flag
     # and the context path, which docker requires last.
