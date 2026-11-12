@@ -1,0 +1,9 @@
+release_version: "1.2.0"
+support:
+  llama-cpp:
+    - llamacpp-v0.5.0
+  amd-rocm:
+    - amd-7.14.1
+    - amd-10.1.0
+  amd-arch:
+    - amd-gfx1200

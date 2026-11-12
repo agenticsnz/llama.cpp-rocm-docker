@@ -24,6 +24,21 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Install yq v4 (mikefarah) from the upstream release. Ubuntu's yq package is a
+# different tool (v3, a jq wrapper) with incompatible syntax.
+ARG TARGETARCH
+ARG YQ_VERSION=v4.54.1
+ARG YQ_SHA256_AMD64=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
+ARG YQ_SHA256_ARM64=189088da0c6429ec5178dfaab1a114805f6cab0b61b165ab236efedf1d57a71b
+RUN case "$TARGETARCH" in \
+        amd64) yq_sha256="$YQ_SHA256_AMD64" ;; \
+        arm64) yq_sha256="$YQ_SHA256_ARM64" ;; \
+        *) echo "unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" && \
+    echo "${yq_sha256}  /usr/local/bin/yq" | sha256sum -c - && \
+    chmod 0755 /usr/local/bin/yq
+
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
 USER vscode
