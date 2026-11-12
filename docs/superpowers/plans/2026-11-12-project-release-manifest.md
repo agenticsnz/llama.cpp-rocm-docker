@@ -22,7 +22,7 @@
 
 ## Review Focus
 
-- A value containing quotes or `yq` syntax (for example `1.3.0"; x`) is stored literally by `--set`. Expected: the file holds exactly that text inside quotes and `--get` returns it unchanged.
+- A value containing quotes or `yq` syntax is stored literally by `--add`. `--set` rejects it through the format check. Expected: `--add` with `amd"x` round-trips through `--list` unchanged, and `--set` with `1.3.0"; x` exits `1` with the file unchanged.
 - A manifest that is missing: every command exits `1` and does not create the file. Expected: a clear message on stderr and no file created.
 - Deleting the last value from an axis leaves an empty block sequence, and `--list` on it prints nothing with exit `0`. Expected: no error for an empty axis.
 - Deleting a value that is a prefix of a listed value (`amd-7.14` against `amd-7.14.1`) removes nothing and exits `1`. Expected: the list is unchanged.
@@ -224,6 +224,8 @@ From R9, one test per scenario:
 - "Adding a new value appends it to the axis list": the fixture contains `conf/amd-8.0.0.env`. After `--add amd-rocm amd-8.0.0`, the list is `amd-7.14.1`, `amd-10.1.0`, `amd-8.0.0` and exit is `0`.
 - "Adding a value already in the axis list is rejected": `--add amd-rocm amd-10.1.0` exits `1` and the list is unchanged.
 - "Adding a value with no matching env file is rejected": `--add amd-arch amd-gfx9999` exits `1` and the list is unchanged.
+
+Also from the Review Focus list: `--add amd-rocm 'amd"x'` with a fixture file `conf/amd"x.env` exits `0`, and `--list amd-rocm` then ends with `amd"x` exactly.
 
 Also test that `CONF_DIR` set in the environment is the directory the existence check reads: a fixture where the env file exists only in a second directory, passed as `CONF_DIR=<dir>`, is accepted. This is the override that Task 2's readonly line must keep.
 

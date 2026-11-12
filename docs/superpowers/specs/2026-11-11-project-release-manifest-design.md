@@ -129,7 +129,7 @@ read_release_version() {
 }
 
 write_release_version() {
-    # yq -i '.release_version = "<value>"' "$MANIFEST"
+    # V="<value>" yq -i '.release_version = strenv(V)' "$MANIFEST"
     return 1
 }
 
@@ -140,13 +140,13 @@ list_axis_values() {
 
 add_axis_value() {
     # Checks: value not already in the list; "$CONF_DIR/<value>.env" exists.
-    # yq -i '.support.<axis> += ["<value>"]' "$MANIFEST"
+    # V="<value>" yq -i '.support.<axis> += [strenv(V)]' "$MANIFEST"
     return 1
 }
 
 delete_axis_value() {
     # Checks: value is in the list.
-    # yq -i '.support.<axis> |= del(.[] | select(. == "<value>"))' "$MANIFEST"
+    # V="<value>" yq -i '.support.<axis> |= del(.[] | select(. == strenv(V)))' "$MANIFEST"
     return 1
 }
 
@@ -346,6 +346,56 @@ Scenario: Setting release_version rejects a value that is not MAJOR.MINOR.PATCH
   And the file still contains release_version: "1.2.0"
 ```
 
+**Scenario: Setting release_version rewrites an unquoted numeric value as a quoted string**
+
+```gherkin
+Scenario: Setting release_version rewrites an unquoted numeric value as a quoted string
+  Given build-conf/project-release.yaml contains release_version: 1.2
+  When scripts/release_manifest_tool.sh --set release_version 1.3.0 is run
+  Then the file contains the line release_version: "1.3.0"
+```
+
+**Scenario: Getting an unquoted numeric release_version returns it as written**
+
+```gherkin
+Scenario: Getting an unquoted numeric release_version returns it as written
+  Given build-conf/project-release.yaml contains release_version: 1.2
+  When scripts/release_manifest_tool.sh --get release_version is run
+  Then stdout is exactly "1.2"
+  And the exit status is 0
+```
+
+**Scenario: Setting a value with quotes or yq syntax is rejected by the format check**
+
+```gherkin
+Scenario: Setting a value with quotes or yq syntax is rejected by the format check
+  Given build-conf/project-release.yaml contains release_version: "1.2.0"
+  When scripts/release_manifest_tool.sh --set release_version '1.3.0"; x' is run
+  Then the exit status is 1
+  And the file still contains release_version: "1.2.0"
+```
+
+**Scenario: Getting release_version with a missing manifest fails**
+
+```gherkin
+Scenario: Getting release_version with a missing manifest fails
+  Given build-conf/project-release.yaml does not exist
+  When scripts/release_manifest_tool.sh --get release_version is run
+  Then the exit status is 1
+  And stderr names build-conf/project-release.yaml
+  And the file is not created
+```
+
+**Scenario: Setting release_version with a missing manifest fails**
+
+```gherkin
+Scenario: Setting release_version with a missing manifest fails
+  Given build-conf/project-release.yaml does not exist
+  When scripts/release_manifest_tool.sh --set release_version 1.3.0 is run
+  Then the exit status is 1
+  And the file is not created
+```
+
 #### R8. The helper script lists an axis
 
 **Requirement:** `--list <axis>` prints each value of that axis, one per line, in file order.
@@ -368,6 +418,26 @@ Scenario: Listing an unknown top-level name is a usage error
   When scripts/release_manifest_tool.sh --list gpu is run
   Then the exit status is 2
   And stderr contains the usage text
+```
+
+**Scenario: Listing an axis with no values prints nothing**
+
+```gherkin
+Scenario: Listing an axis with no values prints nothing
+  Given build-conf/project-release.yaml has an amd-arch list with no values
+  When scripts/release_manifest_tool.sh --list amd-arch is run
+  Then stdout is empty
+  And the exit status is 0
+```
+
+**Scenario: Listing an axis with a missing manifest fails**
+
+```gherkin
+Scenario: Listing an axis with a missing manifest fails
+  Given build-conf/project-release.yaml does not exist
+  When scripts/release_manifest_tool.sh --list amd-rocm is run
+  Then the exit status is 1
+  And the file is not created
 ```
 
 #### R9. The helper script adds a value to an axis
@@ -406,6 +476,38 @@ Scenario: Adding a value with no matching env file is rejected
   And the amd-arch list is unchanged
 ```
 
+**Scenario: Adding a value uses the CONF_DIR override for the env file check**
+
+```gherkin
+Scenario: Adding a value uses the CONF_DIR override for the env file check
+  Given the environment variable CONF_DIR names a directory containing amd-8.0.0.env
+  And the repository conf/ directory does not contain amd-8.0.0.env
+  When CONF_DIR is set and scripts/release_manifest_tool.sh --add amd-rocm amd-8.0.0 is run
+  Then the amd-rocm list is [amd-7.14.1, amd-10.1.0, amd-8.0.0]
+  And the exit status is 0
+```
+
+**Scenario: Adding a value with quote characters stores it literally**
+
+```gherkin
+Scenario: Adding a value with quote characters stores it literally
+  Given the directory conf/ contains a file named amd"x.env
+  When scripts/release_manifest_tool.sh --add amd-rocm 'amd"x' is run
+  Then the amd-rocm list ends with the value amd"x
+  And the exit status is 0
+```
+
+**Scenario: Adding a value with a missing manifest fails**
+
+```gherkin
+Scenario: Adding a value with a missing manifest fails
+  Given build-conf/project-release.yaml does not exist
+  And conf/amd-8.0.0.env exists
+  When scripts/release_manifest_tool.sh --add amd-rocm amd-8.0.0 is run
+  Then the exit status is 1
+  And the file is not created
+```
+
 #### R10. The helper script deletes one value from an axis
 
 **Requirement:** `--delete <axis> <value>` removes that value from the axis list and leaves the other values in place. It fails when the value is not in the list.
@@ -437,6 +539,46 @@ Scenario: Deleting a value not in the axis list is rejected
   When scripts/release_manifest_tool.sh --delete amd-rocm amd-9.9.9 is run
   Then the exit status is 1
   And the amd-rocm list is unchanged
+```
+
+**Scenario: Deleting the last value leaves an empty axis**
+
+```gherkin
+Scenario: Deleting the last value leaves an empty axis
+  Given build-conf/project-release.yaml has an amd-arch list of amd-gfx1200 only
+  When scripts/release_manifest_tool.sh --delete amd-arch amd-gfx1200 is run
+  Then the amd-arch list is empty
+  And the exit status is 0
+```
+
+**Scenario: Deleting a prefix of a listed value is rejected**
+
+```gherkin
+Scenario: Deleting a prefix of a listed value is rejected
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 only
+  When scripts/release_manifest_tool.sh --delete amd-rocm amd-7.14 is run
+  Then the exit status is 1
+  And the amd-rocm list is [amd-7.14.1]
+```
+
+**Scenario: Deleting a value keeps a longer value that starts with it**
+
+```gherkin
+Scenario: Deleting a value keeps a longer value that starts with it
+  Given build-conf/project-release.yaml has an amd-rocm list of amd-7.14.1 and amd-7.14.10
+  When scripts/release_manifest_tool.sh --delete amd-rocm amd-7.14.1 is run
+  Then the amd-rocm list is [amd-7.14.10]
+  And the exit status is 0
+```
+
+**Scenario: Deleting with a missing manifest fails**
+
+```gherkin
+Scenario: Deleting with a missing manifest fails
+  Given build-conf/project-release.yaml does not exist
+  When scripts/release_manifest_tool.sh --delete amd-rocm amd-7.14.1 is run
+  Then the exit status is 1
+  And the file is not created
 ```
 
 #### R11. The helper script rejects missing or unknown arguments
