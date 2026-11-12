@@ -52,7 +52,7 @@ The script reads `is_dev` with `scripts/release_manifest_tool.sh --get is_dev`. 
 
 - The version tag, `<reference>:<IMAGE_VERSION>`, is emitted in both the dry-run output and the real build.
 - When `is_dev` is `true`, the version tag is `<IMAGE_VERSION>-dev`. When it is `false`, it is `<IMAGE_VERSION>`.
-- The `latest` tag is published for dev builds as well, as it is today. See the open question below.
+- The `latest` tag is published for non-dev builds, as it is today. A dev build does not publish `latest`.
 - `VERSION` is removed from `KEY_AXIS`, from `REQUIRED_KEYS`, and from the `--build-arg` list.
 
 ### Overrides
@@ -243,10 +243,6 @@ Scenario: The README neutral-axis table does not name VERSION
   Then no row names VERSION as a key of conf/build-config.env
 ```
 
-## Open question
-
-Should a dev build also move the `latest` tag? This draft keeps today's behaviour, so it does. A dev image could then replace the image that deployments pull by default. Until you answer, the scenario for `latest` below stays as written.
-
 #### R7. A missing is_dev stops the build
 
 **Requirement:** The build stops, and the error names the manifest, when `is_dev` is missing.
@@ -291,11 +287,20 @@ Scenario: A non-dev build tags the image without a suffix
   Then the output contains the exact line "--tag ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.2.0"
 ```
 
-**Scenario: A dev build still publishes the latest tag**
+**Scenario: A dev build does not publish the latest tag**
 
 ```gherkin
-Scenario: A dev build still publishes the latest tag
+Scenario: A dev build does not publish the latest tag
   Given build-conf/project-release.yaml has release_version "1.2.0" and is_dev: true
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the output contains no --tag line ending in ":latest"
+```
+
+**Scenario: A non-dev build publishes the latest tag**
+
+```gherkin
+Scenario: A non-dev build publishes the latest tag
+  Given build-conf/project-release.yaml has release_version "1.2.0" and is_dev: false
   When build-rocm.sh is run with --dry-run and the existing axis files
   Then the output contains a --tag line ending in ":latest"
 ```
