@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - `release_version` must match `^[0-9]+\.[0-9]+\.[0-9]+$`. Checked by the build script, after the tool returns it.
-- `is_dev` must be exactly `true` or `false`. Checked by the build script. `True`, `yes` and `1` are rejected.
+- `is_dev` must be the text `true` or `false`. Checked by the build script. `True`, `yes` and `1` are rejected. A quoted `"true"` is accepted, by the user's decision: the tool returns text and does not report YAML types.
 - Tag format: `<reference>:<release_version>` when `is_dev` is `false`, `<reference>:<release_version>-dev` when `true`. `latest` is published only when `is_dev` is `false`.
 - The build script's `die` exits with status 2. The tool's check failures exit with status 1 and its usage errors with status 2.
 - Tests never change the committed `build-conf/project-release.yaml`, `conf/` or any tracked file. Build tests that need a different manifest copy the tree (`build-rocm.sh`, `scripts/`, `build-conf/`, `conf/`) into `.tmp/` and edit the copy.

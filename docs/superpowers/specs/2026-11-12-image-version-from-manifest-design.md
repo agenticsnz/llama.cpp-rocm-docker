@@ -46,7 +46,7 @@ The image version is `VERSION` in `conf/build-config.env`, which is also where t
 
 ### Reading is_dev
 
-The script reads `is_dev` with `scripts/release_manifest_tool.sh --get is_dev`. `--get` reads any single-value key (tool design R12), so no change to the tool is needed for this. The key is required: a missing `is_dev` stops the build, and so does any value other than `true` or `false`. The tool does not gain a `--set is_dev`; nothing in this change writes the flag.
+The script reads `is_dev` with `scripts/release_manifest_tool.sh --get is_dev`. `--get` reads any single-value key (tool design R12), so no change to the tool is needed for this. The key is required: a missing `is_dev` stops the build, and so does any value other than the text `true` or `false`. The check is on the text, so a quoted `"true"` is read as `true`. This is accepted: `is_dev` is written programmatically, and the tool does not report YAML types. The tool does not gain a `--set is_dev`; nothing in this change writes the flag.
 
 ### Where the version is used
 
@@ -352,3 +352,4 @@ Scenario: CONTRIBUTING.md mentions the -dev suffix in the Versioning section
 - **`is_dev` through the tool:** the build reads `is_dev` with the generic `--get`, so all manifest reads go through one tool. Reading it with `yq` directly in the build script would be the alternative.
 - **Missing `is_dev`:** stops the build. The committed manifest will carry `is_dev: false`, so the default is written down rather than implied. A default in the tool would hide a manifest that was never updated.
 - **Non-boolean `is_dev`:** fails, rather than being treated as `false`, because `"yes"` in a manifest most likely means `true`.
+- **Quoted `is_dev`:** `is_dev: "true"` is accepted as a dev build. The tool returns the text, so the build cannot tell a string from a boolean. This was raised in the whole-branch review; the choice to accept it is the user's, since `is_dev` is set programmatically.
