@@ -78,8 +78,14 @@ axis. The other copy is reported and discarded.
 |---|---|
 | `CMAKE_BUILD_TYPE` | CMake build type (`Release`) |
 | `REGISTRY` | Registry host for the image reference (no scheme, no trailing slash) |
-| `VERSION` | Image version tag published alongside `latest` |
 | `GGML_NATIVE` | `OFF`, so the CPU backend is not tuned to the build host |
+
+### Release manifest (`build-conf/project-release.yaml`)
+
+| Variable | File | Used for |
+|---|---|---|
+| `release_version` | `build-conf/project-release.yaml` | Image version; the image is tagged with it, alongside `latest` for non-dev builds |
+| `is_dev` | `build-conf/project-release.yaml` | `true` appends `-dev` to the image version and suppresses `latest`; `false` for a release build |
 
 ## Building locally
 
