@@ -60,10 +60,89 @@ echo "== no command is a usage error =="
 expect_usage_error "no arguments exits 2 with usage" "$(make_fixture no-args)"
 
 echo
-echo "== release_version commands reject an axis name =="
-# Scenario: Getting an axis name as release_version is a usage error
-expect_usage_error "--get amd-rocm exits 2 with usage" \
-    "$(make_fixture get-axis)" --get amd-rocm
+echo "== --get reads single-value keys =="
+# Scenario: Getting a list key exits 1 and names the key
+fixture="$(make_fixture get-list-key)"
+err="$("$fixture/scripts/release_manifest_tool.sh" --get amd-rocm 2>&1 >/dev/null)"
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--get amd-rocm: exit $status, expected 1"
+elif ! grep -qF "amd-rocm" <<<"$err"; then
+    note_fail "--get amd-rocm: stderr does not name amd-rocm"
+else
+    note_pass "--get amd-rocm exits 1 and names amd-rocm"
+fi
+
+# Scenario: Getting a boolean key prints its value
+fixture="$(make_fixture get-bool-key)"
+echo 'is_dev: true' >> "$fixture/build-conf/project-release.yaml"
+out="$("$fixture/scripts/release_manifest_tool.sh" --get is_dev 2>/dev/null)"
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--get is_dev: exit $status, expected 0"
+elif [ "$out" != "true" ]; then
+    note_fail "--get is_dev: stdout '$out', expected true"
+else
+    note_pass "Getting a boolean key prints its value"
+fi
+
+# Scenario: Getting a string key prints its value
+fixture="$(make_fixture get-string-key)"
+echo 'label: hello' >> "$fixture/build-conf/project-release.yaml"
+out="$("$fixture/scripts/release_manifest_tool.sh" --get label 2>/dev/null)"
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--get label: exit $status, expected 0"
+elif [ "$out" != "hello" ]; then
+    note_fail "--get label: stdout '$out', expected hello"
+else
+    note_pass "Getting a string key prints its value"
+fi
+
+# Scenario: Getting a number key prints its value
+fixture="$(make_fixture get-number-key)"
+echo 'count: 3' >> "$fixture/build-conf/project-release.yaml"
+out="$("$fixture/scripts/release_manifest_tool.sh" --get count 2>/dev/null)"
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--get count: exit $status, expected 0"
+elif [ "$out" != "3" ]; then
+    note_fail "--get count: stdout '$out', expected 3"
+else
+    note_pass "Getting a number key prints its value"
+fi
+
+# Scenario: Getting an absent key exits with status 1 and names the key
+fixture="$(make_fixture get-absent-key)"
+err="$("$fixture/scripts/release_manifest_tool.sh" --get nope 2>&1 >/dev/null)"
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--get nope: exit $status, expected 1"
+elif ! grep -qF "nope" <<<"$err"; then
+    note_fail "--get nope: stderr does not name nope"
+else
+    note_pass "Getting an absent key exits with status 1 and names the key"
+fi
+
+# Scenario: Getting a map key exits with status 1
+fixture="$(make_fixture get-map-key)"
+"$fixture/scripts/release_manifest_tool.sh" --get support >/dev/null 2>&1
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--get support: exit $status, expected 1"
+else
+    note_pass "Getting a map key exits with status 1"
+fi
+
+# Scenario: Getting a key written as a yq expression looks up a literal key
+fixture="$(make_fixture get-yq-expression)"
+"$fixture/scripts/release_manifest_tool.sh" --get "release_version | ." >/dev/null 2>&1
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--get 'release_version | .': exit $status, expected 1"
+else
+    note_pass "Getting a key written as a yq expression looks up a literal key"
+fi
 
 echo
 echo "== axis commands reject an unknown axis name =="
