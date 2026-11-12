@@ -40,19 +40,26 @@ is_axis() {
     esac
 }
 
+manifest_exists() {
+    # Exits 1 naming the manifest when $MANIFEST is not a regular file.
+    [ -f "$MANIFEST" ] || check_failed "missing manifest: $MANIFEST"
+}
+
 is_valid_release_version() {
     # Returns 0 when $1 matches MAJOR.MINOR.PATCH with digits only.
-    return 1
+    [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
 read_release_version() {
-    # yq -r '.release_version' "$MANIFEST"
-    return 1
+    manifest_exists
+    yq -r '.release_version' "$MANIFEST"
 }
 
 write_release_version() {
-    # V="<value>" yq -i '.release_version = strenv(V)' "$MANIFEST"
-    return 1
+    manifest_exists
+    is_valid_release_version "$1" || check_failed "invalid release_version: $1 (expected MAJOR.MINOR.PATCH)"
+    # The style operator forces double quotes, which strenv alone keeps only when the old value was quoted.
+    V="$1" yq -i '.release_version = strenv(V) | .release_version style = "double"' "$MANIFEST"
 }
 
 list_axis_values() {

@@ -83,6 +83,122 @@ expect_usage_error "--set amd-rocm 1.0.0 exits 2 with usage" \
 expect_usage_error "--list release_version exits 2 with usage" \
     "$(make_fixture list-release-version)" --list release_version
 
+# with_release_version_line <fixture> <yaml-line>: replaces the release_version
+# line of the fixture manifest with <yaml-line>.
+with_release_version_line() {
+    sed -i "s/^release_version: .*/$2/" "$1/build-conf/project-release.yaml"
+}
+
+echo
+echo "== release_version read and write =="
+# Scenario: Getting release_version works from another working directory
+fixture="$(make_fixture get-other-directory)"
+out="$(cd /tmp && "$fixture/scripts/release_manifest_tool.sh" --get release_version 2>/dev/null)"
+status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "1.2.0" ]; then
+    note_pass "--get from /tmp prints 1.2.0 and exits 0"
+else
+    note_fail "--get from /tmp: exit $status, stdout '$out', expected exit 0 and '1.2.0'"
+fi
+
+# Scenario: Setting release_version replaces the stored version
+fixture="$(make_fixture set-replaces)"
+"$fixture/scripts/release_manifest_tool.sh" --set release_version 1.3.0 2>/dev/null
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--set 1.3.0: exit $status, expected 0"
+elif ! grep -qxF 'release_version: "1.3.0"' "$fixture/build-conf/project-release.yaml"; then
+    note_fail "--set 1.3.0: file does not contain release_version: \"1.3.0\""
+else
+    note_pass "--set 1.3.0 replaces the version and keeps it quoted"
+fi
+
+# Scenario: Setting release_version rejects a value that is not MAJOR.MINOR.PATCH
+fixture="$(make_fixture set-rejects-short)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --set release_version 1.3 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--set 1.3: exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--set 1.3: manifest changed"
+else
+    note_pass "--set 1.3 exits 1 and leaves the manifest unchanged"
+fi
+
+# Review focus: a value with quotes or yq syntax is rejected by the format check
+fixture="$(make_fixture set-rejects-injection)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --set release_version '1.3.0"; x' 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--set '1.3.0\"; x': exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--set '1.3.0\"; x': manifest changed"
+else
+    note_pass "--set '1.3.0\"; x' exits 1 and leaves the manifest unchanged"
+fi
+
+# Review focus: an unquoted numeric release_version reads as written
+fixture="$(make_fixture get-unquoted-numeric)"
+with_release_version_line "$fixture" "release_version: 1.2"
+out="$("$fixture/scripts/release_manifest_tool.sh" --get release_version 2>/dev/null)"
+status=$?
+if [ "$status" -eq 0 ] && [ "$out" = "1.2" ]; then
+    note_pass "--get on unquoted release_version: 1.2 prints 1.2"
+else
+    note_fail "--get on unquoted 1.2: exit $status, stdout '$out', expected exit 0 and '1.2'"
+fi
+
+# Review focus: after --set, an unquoted numeric release_version is stored as a string
+fixture="$(make_fixture set-unquoted-numeric)"
+with_release_version_line "$fixture" "release_version: 1.2"
+"$fixture/scripts/release_manifest_tool.sh" --set release_version 1.3.0 2>/dev/null
+status=$?
+manifest="$fixture/build-conf/project-release.yaml"
+tag="$(yq -r '.release_version | tag' "$manifest")"
+if [ "$status" -ne 0 ]; then
+    note_fail "--set 1.3.0 over unquoted 1.2: exit $status, expected 0"
+elif ! grep -qxF 'release_version: "1.3.0"' "$manifest"; then
+    note_fail "--set 1.3.0 over unquoted 1.2: file does not contain release_version: \"1.3.0\""
+elif [ "$tag" != "!!str" ]; then
+    note_fail "--set 1.3.0 over unquoted 1.2: tag is $tag, expected !!str"
+else
+    note_pass "--set 1.3.0 over unquoted 1.2 writes a quoted !!str"
+fi
+
+echo
+echo "== release_version with a missing manifest fails =="
+# Scenario: Getting release_version with a missing manifest fails
+fixture="$(make_fixture get-missing-manifest)"
+rm -f "$fixture/build-conf/project-release.yaml"
+err="$("$fixture/scripts/release_manifest_tool.sh" --get release_version 2>&1 >/dev/null)"
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--get with missing manifest: exit $status, expected 1"
+elif ! grep -qF "build-conf/project-release.yaml" <<<"$err"; then
+    note_fail "--get with missing manifest: stderr does not name the manifest"
+elif [ -e "$fixture/build-conf/project-release.yaml" ]; then
+    note_fail "--get with missing manifest: manifest was created"
+else
+    note_pass "--get with missing manifest exits 1, names the file, creates nothing"
+fi
+
+# Scenario: Setting release_version with a missing manifest fails
+fixture="$(make_fixture set-missing-manifest)"
+rm -f "$fixture/build-conf/project-release.yaml"
+"$fixture/scripts/release_manifest_tool.sh" --set release_version 1.3.0 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--set with missing manifest: exit $status, expected 1"
+elif [ -e "$fixture/build-conf/project-release.yaml" ]; then
+    note_fail "--set with missing manifest: manifest was created"
+else
+    note_pass "--set with missing manifest exits 1 and creates nothing"
+fi
+
 echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
