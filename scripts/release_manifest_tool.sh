@@ -13,7 +13,7 @@ readonly AXES="llama-cpp amd-rocm amd-arch"
 usage() {
     cat <<'EOF'
 Usage:
-  release_manifest_tool.sh --get release_version
+  release_manifest_tool.sh --get <key>
   release_manifest_tool.sh --set release_version <value>
   release_manifest_tool.sh --list <axis>
   release_manifest_tool.sh --add <axis> <value>
@@ -51,9 +51,18 @@ is_valid_release_version() {
     [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
-read_release_version() {
+read_key() {
+    # Prints the value of top-level scalar key $1; exits 1 naming the key when it is absent or not a scalar.
     manifest_exists
-    yq -r '.release_version' "$MANIFEST"
+    local has_key tag
+    has_key="$(K="$1" yq -r 'has(strenv(K))' "$MANIFEST")"
+    [ "$has_key" = "true" ] || check_failed "key not found: $1"
+    tag="$(K="$1" yq -r '.[strenv(K)] | tag' "$MANIFEST")"
+    case "$tag" in
+        '!!str' | '!!int' | '!!float' | '!!bool') ;;
+        *) check_failed "key is not a single-value key: $1" ;;
+    esac
+    K="$1" yq -r '.[strenv(K)]' "$MANIFEST"
 }
 
 write_release_version() {
@@ -95,8 +104,8 @@ delete_axis_value() {
 # shellcheck disable=SC2015
 main() {
     case "${1:-}" in
-        --get)    [ "$#" -eq 2 ] && [ "$2" = release_version ] || usage_error "--get takes release_version"
-                  read_release_version ;;
+        --get)    [ "$#" -eq 2 ] || usage_error "--get takes one key name"
+                  read_key "$2" ;;
         --set)    [ "$#" -eq 3 ] && [ "$2" = release_version ] || usage_error "--set takes release_version and a value"
                   write_release_version "$3" ;;
         --list)   [ "$#" -eq 2 ] && is_axis "$2" || usage_error "--list takes one axis name"

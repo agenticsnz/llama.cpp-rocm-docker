@@ -28,6 +28,12 @@ expect_text() {
     else note_fail "missing: $1"; fi
 }
 
+# expect_versioning_text <name> <phrase>: the Versioning section states the phrase.
+expect_versioning_text() {
+    if awk '/^## Versioning$/{f=1;next} /^## /{f=0} f' "$GUIDE" | grep -qF -- "$2"; then note_pass "$1"
+    else note_fail "$1"; fi
+}
+
 echo "== CONTRIBUTING.md exists =="
 if [ -f "$GUIDE" ]; then note_pass "CONTRIBUTING.md exists"
 else note_fail "CONTRIBUTING.md is missing"; fi
@@ -72,6 +78,13 @@ echo "== the versioning conditions =="
 expect_text "The image name follows the axis versions"
 expect_text "iterates when Dockerfile.rocm changes"
 expect_text "increments its last component"
+
+echo
+echo "== the manifest and the -dev suffix in the versioning section =="
+# Scenario: CONTRIBUTING.md names the manifest in the Versioning section, and
+# mentions the -dev suffix in the Versioning section.
+expect_versioning_text "CONTRIBUTING.md names the manifest in the Versioning section" "build-conf/project-release.yaml"
+expect_versioning_text "CONTRIBUTING.md mentions the -dev suffix in the Versioning section" "-dev"
 
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

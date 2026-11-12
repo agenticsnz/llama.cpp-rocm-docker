@@ -67,7 +67,7 @@ support:
 `scripts/release_manifest_tool.sh` finds the manifest relative to its own location, so it works from any working directory and takes no path argument.
 
 ```
-release_manifest_tool.sh --get release_version
+release_manifest_tool.sh --get <key>
 release_manifest_tool.sh --set release_version <value>
 release_manifest_tool.sh --list <axis>
 release_manifest_tool.sh --add <axis> <value>
@@ -75,7 +75,7 @@ release_manifest_tool.sh --delete <axis> <value>
 ```
 
 - `<axis>` is one of `llama-cpp`, `amd-rocm`, `amd-arch`. Any other name is a usage error.
-- `--get` and `--set` act only on `release_version`.
+- `--get <key>` reads any single-value key (see R12). `--set` acts only on `release_version`.
 - `--list`, `--add` and `--delete` act only on an axis list.
 - Exit status: `0` on success, `1` when a check fails and the manifest is unchanged, `2` for a usage error.
 
@@ -94,7 +94,7 @@ readonly AXES="llama-cpp amd-rocm amd-arch"
 usage() {
     cat <<'EOF'
 Usage:
-  release_manifest_tool.sh --get release_version
+  release_manifest_tool.sh --get <key>
   release_manifest_tool.sh --set release_version <value>
   release_manifest_tool.sh --list <axis>
   release_manifest_tool.sh --add <axis> <value>
@@ -585,15 +585,7 @@ Scenario: Deleting with a missing manifest fails
 
 **Requirement:** With no command, an unknown command, or an axis name that is not one of the three, the script prints usage and exits with status 2 without touching the file.
 
-**Scenario: Getting an axis name as release_version is a usage error**
-
-```gherkin
-Scenario: Getting an axis name as release_version is a usage error
-  Given build-conf/project-release.yaml exists
-  When scripts/release_manifest_tool.sh --get amd-rocm is run
-  Then the exit status is 2
-  And stderr contains the usage text
-```
+_Superseded by R12: `--get amd-rocm` is no longer a usage error. It exits with status 1, because a list is not a single-value key._
 
 **Scenario: Running with no command is a usage error**
 
@@ -613,6 +605,82 @@ Scenario: Adding to an unknown axis is a usage error
   When scripts/release_manifest_tool.sh --add gpu gfx1200 is run
   Then the exit status is 2
   And the file is unchanged
+```
+
+#### R12. The helper script gets any single-value key
+
+**Requirement:** `--get <key>` prints the value of any top-level key whose value is a string, number or boolean. The key is a literal name and is never read as a yq expression. A key that is absent exits with status 1 and the error names the key. A key whose value is a list or a map exits with status 1 and the error names the key. This supersedes the `--get` parts of R7 and R11, and the `--get` branch of the skeleton above.
+
+**Scenario: Getting a boolean key prints its value**
+
+```gherkin
+Scenario: Getting a boolean key prints its value
+  Given build-conf/project-release.yaml has is_dev: true
+  When scripts/release_manifest_tool.sh --get is_dev is run
+  Then stdout is exactly "true"
+```
+
+**Scenario: Getting a string key prints its value**
+
+```gherkin
+Scenario: Getting a string key prints its value
+  Given build-conf/project-release.yaml has label: hello
+  When scripts/release_manifest_tool.sh --get label is run
+  Then stdout is exactly "hello"
+```
+
+**Scenario: Getting a number key prints its value**
+
+```gherkin
+Scenario: Getting a number key prints its value
+  Given build-conf/project-release.yaml has count: 3
+  When scripts/release_manifest_tool.sh --get count is run
+  Then stdout is exactly "3"
+```
+
+**Scenario: Getting an absent key exits with status 1**
+
+```gherkin
+Scenario: Getting an absent key exits with status 1
+  Given build-conf/project-release.yaml has no nope key
+  When scripts/release_manifest_tool.sh --get nope is run
+  Then the exit status is 1
+```
+
+**Scenario: Getting an absent key names the key in the error**
+
+```gherkin
+Scenario: Getting an absent key names the key in the error
+  Given build-conf/project-release.yaml has no nope key
+  When scripts/release_manifest_tool.sh --get nope is run
+  Then stderr names nope
+```
+
+**Scenario: Getting a list key exits with status 1**
+
+```gherkin
+Scenario: Getting a list key exits with status 1
+  Given build-conf/project-release.yaml has an amd-rocm list
+  When scripts/release_manifest_tool.sh --get amd-rocm is run
+  Then the exit status is 1
+```
+
+**Scenario: Getting a map key exits with status 1**
+
+```gherkin
+Scenario: Getting a map key exits with status 1
+  Given build-conf/project-release.yaml has a support map
+  When scripts/release_manifest_tool.sh --get support is run
+  Then the exit status is 1
+```
+
+**Scenario: Getting a key written as a yq expression looks up a literal key**
+
+```gherkin
+Scenario: Getting a key written as a yq expression looks up a literal key
+  Given build-conf/project-release.yaml has release_version "1.2.0"
+  When scripts/release_manifest_tool.sh --get "release_version | ." is run
+  Then the exit status is 1
 ```
 
 ## What is left to the builder

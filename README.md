@@ -28,7 +28,7 @@ the build. Nothing about the image is hard-coded in the script or in
 | `conf/amd-gfx1200.env` | Anything that changes with the GPU card |
 | `conf/amd-7.14.1.env`, `conf/amd-10.1.0.env` | Anything that changes with the ROCm release |
 | `conf/llamacpp-v0.5.0.env` | Anything that changes with the llama.cpp version |
-| `conf/build-config.env` | Everything else (build type, image version, registry) |
+| `conf/build-config.env` | Everything else (build type, registry) |
 
 A key appearing in more than one file resolves to whichever file owns that
 axis. The other copy is reported and discarded.
@@ -78,8 +78,14 @@ axis. The other copy is reported and discarded.
 |---|---|
 | `CMAKE_BUILD_TYPE` | CMake build type (`Release`) |
 | `REGISTRY` | Registry host for the image reference (no scheme, no trailing slash) |
-| `VERSION` | Image version tag published alongside `latest` |
 | `GGML_NATIVE` | `OFF`, so the CPU backend is not tuned to the build host |
+
+### Release manifest (`build-conf/project-release.yaml`)
+
+| Variable | File | Used for |
+|---|---|---|
+| `release_version` | `build-conf/project-release.yaml` | Image version; the image is tagged with it, alongside `latest` for non-dev builds |
+| `is_dev` | `build-conf/project-release.yaml` | `true` appends `-dev` to the image version and suppresses `latest`; `false` for a release build |
 
 ## Building locally
 
