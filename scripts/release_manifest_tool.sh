@@ -85,9 +85,9 @@ add_axis_value() {
 }
 
 delete_axis_value() {
-    # Checks: value is in the list.
-    # V="<value>" yq -i '.support.<axis> |= del(.[] | select(. == strenv(V)))' "$MANIFEST"
-    return 1
+    manifest_exists
+    axis_value_exists "$1" "$2" || check_failed "not in $1: $2"
+    V="$2" yq -i ".support.$1 |= del(.[] | select(. == strenv(V)))" "$MANIFEST"
 }
 
 # Each arm is "checks && is_valid || usage_error": the || is the intended exit path.

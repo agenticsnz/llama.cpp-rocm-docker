@@ -316,5 +316,103 @@ else
 fi
 
 echo
+echo "== delete removes one axis value =="
+# Scenario: Deleting a value removes that value from the axis list
+fixture="$(make_fixture delete-removes-value)"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-10.1.0 2>/dev/null
+status=$?
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null)"
+if [ "$status" -ne 0 ]; then
+    note_fail "--delete amd-rocm amd-10.1.0: exit $status, expected 0"
+elif [ "$out" != "amd-7.14.1" ]; then
+    note_fail "--delete amd-rocm amd-10.1.0: list '$out', expected amd-7.14.1"
+else
+    note_pass "--delete amd-rocm amd-10.1.0 removes that value and exits 0"
+fi
+
+# Scenario: Deleting a value leaves the other axis lists unchanged
+fixture="$(make_fixture delete-leaves-other-axes)"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-10.1.0 2>/dev/null
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-arch 2>/dev/null)"
+if [ "$out" != "amd-gfx1200" ]; then
+    note_fail "--delete amd-rocm amd-10.1.0: amd-arch list '$out', expected amd-gfx1200"
+else
+    note_pass "--delete amd-rocm amd-10.1.0 leaves amd-arch unchanged"
+fi
+
+# Scenario: Deleting a value not in the axis list is rejected
+fixture="$(make_fixture delete-not-in-list)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-9.9.9 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--delete amd-rocm amd-9.9.9: exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--delete amd-rocm amd-9.9.9: manifest changed"
+else
+    note_pass "--delete amd-rocm amd-9.9.9 exits 1 and leaves the manifest unchanged"
+fi
+
+# Scenario: Deleting the last value leaves an empty axis
+fixture="$(make_fixture delete-last-value)"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-arch amd-gfx1200 2>/dev/null
+status=$?
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-arch 2>/dev/null)"
+list_status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--delete amd-arch amd-gfx1200: exit $status, expected 0"
+elif [ "$(yq -r '.support.amd-arch | length' "$fixture/build-conf/project-release.yaml")" != "0" ]; then
+    note_fail "--delete amd-arch amd-gfx1200: amd-arch is not empty"
+elif [ "$list_status" -ne 0 ] || [ -n "$out" ]; then
+    note_fail "--list amd-arch after deleting last value: exit $list_status, stdout '$out', expected exit 0 and empty"
+else
+    note_pass "--delete of the last value leaves an empty axis that lists nothing"
+fi
+
+# Scenario: Deleting a prefix of a listed value is rejected
+fixture="$(make_fixture delete-prefix-rejected)"
+manifest="$fixture/build-conf/project-release.yaml"
+cp "$manifest" "$fixture/project-release.saved"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-7.14 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--delete amd-rocm amd-7.14: exit $status, expected 1"
+elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
+    note_fail "--delete amd-rocm amd-7.14: manifest changed"
+else
+    note_pass "--delete amd-rocm amd-7.14 exits 1 and leaves the manifest unchanged"
+fi
+
+# Scenario: Deleting a value keeps a longer value that starts with it
+fixture="$(make_fixture delete-prefix-sibling-kept)"
+yq -i '.support.amd-rocm += ["amd-7.14.10"]' "$fixture/build-conf/project-release.yaml"
+"$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-7.14.1 2>/dev/null
+status=$?
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null)"
+if [ "$status" -ne 0 ]; then
+    note_fail "--delete amd-rocm amd-7.14.1 with amd-7.14.10 present: exit $status, expected 0"
+elif [ "$out" != "$(printf 'amd-10.1.0\namd-7.14.10')" ]; then
+    note_fail "--delete amd-rocm amd-7.14.1: list '$out', expected amd-10.1.0 and amd-7.14.10"
+else
+    note_pass "--delete amd-rocm amd-7.14.1 keeps amd-7.14.10"
+fi
+
+# Scenario: Deleting with a missing manifest fails
+fixture="$(make_fixture delete-missing-manifest)"
+rm -f "$fixture/build-conf/project-release.yaml"
+err="$("$fixture/scripts/release_manifest_tool.sh" --delete amd-rocm amd-7.14.1 2>&1 >/dev/null)"
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--delete with missing manifest: exit $status, expected 1"
+elif ! grep -qF "build-conf/project-release.yaml" <<<"$err"; then
+    note_fail "--delete with missing manifest: stderr does not name the manifest"
+elif [ -e "$fixture/build-conf/project-release.yaml" ]; then
+    note_fail "--delete with missing manifest: manifest was created"
+else
+    note_pass "--delete with missing manifest exits 1, names the file, creates nothing"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
