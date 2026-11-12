@@ -200,5 +200,47 @@ else
 fi
 
 echo
+echo "== list prints axis values =="
+# Scenario: Listing amd-rocm prints its values in file order
+fixture="$(make_fixture list-amd-rocm)"
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>/dev/null)"
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--list amd-rocm: exit $status, expected 0"
+elif [ "$out" != "$(printf 'amd-7.14.1\namd-10.1.0')" ]; then
+    note_fail "--list amd-rocm: stdout '$out', expected amd-7.14.1 then amd-10.1.0"
+else
+    note_pass "--list amd-rocm prints its values in file order and exits 0"
+fi
+
+# Scenario: Listing an axis with no values prints nothing
+fixture="$(make_fixture list-empty-axis)"
+yq -i '.support.amd-arch = []' "$fixture/build-conf/project-release.yaml"
+out="$("$fixture/scripts/release_manifest_tool.sh" --list amd-arch 2>/dev/null)"
+status=$?
+if [ "$status" -ne 0 ]; then
+    note_fail "--list amd-arch with empty axis: exit $status, expected 0"
+elif [ -n "$out" ]; then
+    note_fail "--list amd-arch with empty axis: stdout '$out', expected empty"
+else
+    note_pass "--list amd-arch with an empty axis prints nothing and exits 0"
+fi
+
+# Scenario: Listing an axis with a missing manifest fails
+fixture="$(make_fixture list-missing-manifest)"
+rm -f "$fixture/build-conf/project-release.yaml"
+err="$("$fixture/scripts/release_manifest_tool.sh" --list amd-rocm 2>&1 >/dev/null)"
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--list with missing manifest: exit $status, expected 1"
+elif ! grep -qF "build-conf/project-release.yaml" <<<"$err"; then
+    note_fail "--list with missing manifest: stderr does not name the manifest"
+elif [ -e "$fixture/build-conf/project-release.yaml" ]; then
+    note_fail "--list with missing manifest: manifest was created"
+else
+    note_pass "--list with missing manifest exits 1, names the file, creates nothing"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

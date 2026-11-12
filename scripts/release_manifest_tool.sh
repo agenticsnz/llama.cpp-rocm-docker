@@ -63,8 +63,8 @@ write_release_version() {
 }
 
 list_axis_values() {
-    # yq -r '.support.<axis>[]' "$MANIFEST"
-    return 1
+    manifest_exists
+    yq -r ".support.$1[]" "$MANIFEST"
 }
 
 add_axis_value() {
