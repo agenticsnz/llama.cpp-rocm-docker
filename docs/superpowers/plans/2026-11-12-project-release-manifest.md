@@ -138,7 +138,7 @@ From R7, one test function per scenario:
 - "Setting release_version rejects a value that is not MAJOR.MINOR.PATCH": `--set release_version 1.3` exits `1` and the file still holds `"1.2.0"`.
 
 From the Review Focus list, add:
-- the quote-and-syntax value round-trips through `--set` and `--get` unchanged;
+- `--set release_version '1.3.0"; x'` exits `1` and leaves the file unchanged;
 - an unquoted `release_version: 1.2` in the fixture reads as `1.2` and, after `--set release_version 1.3.0`, reports `!!str`.
 
 Also check that `--get` and `--set` reject axis names, the R11 scenario "Getting an axis name as release_version is a usage error".
