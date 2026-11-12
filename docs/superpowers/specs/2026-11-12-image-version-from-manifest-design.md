@@ -13,6 +13,7 @@ The image version is `VERSION` in `conf/build-config.env`, which is also where t
 - `build-rocm.sh` takes the image tag version from `release_version` in `build-conf/project-release.yaml`.
 - The script reads that value through `scripts/release_manifest_tool.sh --get release_version`.
 - `VERSION` is removed from `conf/build-config.env`.
+- The manifest gains a top-level `is_dev` boolean. When it is `true`, the version tag gets a `-dev` suffix, so `1.2.0` becomes `1.2.0-dev`.
 
 ## Non-goals
 
@@ -43,10 +44,15 @@ The image version is `VERSION` in `conf/build-config.env`, which is also where t
 
 `build-rocm.sh` runs `"$SCRIPT_DIR/scripts/release_manifest_tool.sh" --get release_version` once, during argument resolution, and stores the result in `IMAGE_VERSION`. The script checks the result against `MAJOR.MINOR.PATCH` digits, the same rule the tool applies to `--set`. A failed read or a failed check stops the build with a message that names `build-conf/project-release.yaml`.
 
+### Reading is_dev
+
+The script reads `is_dev` with the same tool, `scripts/release_manifest_tool.sh --get is_dev`. This extends `--get` from one key to two, so the tool's design (`2026-11-11-project-release-manifest-design.md`, R7 and R11) needs the same change. `is_dev` is a boolean. A missing key reads as `false`, and any value other than `true` or `false` stops the build. The tool does not gain a `--set is_dev`; nothing in this change writes the flag.
+
 ### Where the version is used
 
 - The version tag, `<reference>:<IMAGE_VERSION>`, is emitted in both the dry-run output and the real build.
-- The `latest` tag is unchanged.
+- When `is_dev` is `true`, the version tag is `<IMAGE_VERSION>-dev`. When it is `false` or absent, it is `<IMAGE_VERSION>`.
+- The `latest` tag is published for dev builds as well, as it is today. See the open question below.
 - `VERSION` is removed from `KEY_AXIS`, from `REQUIRED_KEYS`, and from the `--build-arg` list.
 
 ### Overrides
@@ -237,6 +243,121 @@ Scenario: The README neutral-axis table does not name VERSION
   Then no row names VERSION as a key of conf/build-config.env
 ```
 
+## Open question
+
+Should a dev build also move the `latest` tag? This draft keeps today's behaviour, so it does. A dev image could then replace the image that deployments pull by default. Until you answer, the scenario for `latest` below stays as written.
+
+#### R7. The manifest tool reads is_dev as a boolean
+
+**Requirement:** `--get is_dev` prints `true` or `false`. A missing key reads as `false`. A value that is not a boolean exits with status 1.
+
+**Scenario: Getting is_dev prints true when the manifest sets it true**
+
+```gherkin
+Scenario: Getting is_dev prints true when the manifest sets it true
+  Given build-conf/project-release.yaml has is_dev: true
+  When scripts/release_manifest_tool.sh --get is_dev is run
+  Then stdout is exactly "true"
+```
+
+**Scenario: Getting is_dev prints false when the manifest sets it false**
+
+```gherkin
+Scenario: Getting is_dev prints false when the manifest sets it false
+  Given build-conf/project-release.yaml has is_dev: false
+  When scripts/release_manifest_tool.sh --get is_dev is run
+  Then stdout is exactly "false"
+```
+
+**Scenario: Getting is_dev prints false when the key is missing**
+
+```gherkin
+Scenario: Getting is_dev prints false when the key is missing
+  Given build-conf/project-release.yaml has no is_dev key
+  When scripts/release_manifest_tool.sh --get is_dev is run
+  Then stdout is exactly "false"
+```
+
+**Scenario: Getting is_dev with a non-boolean value exits with status 1**
+
+```gherkin
+Scenario: Getting is_dev with a non-boolean value exits with status 1
+  Given build-conf/project-release.yaml has is_dev: "yes"
+  When scripts/release_manifest_tool.sh --get is_dev is run
+  Then the exit status is 1
+```
+
+#### R8. A dev build appends -dev to the version tag
+
+**Requirement:** When `is_dev` is `true`, the version tag is `<release_version>-dev`. Otherwise it is `<release_version>`. A non-boolean `is_dev` stops the build, and the error names the manifest.
+
+**Scenario: A dev build tags the image with the -dev suffix**
+
+```gherkin
+Scenario: A dev build tags the image with the -dev suffix
+  Given build-conf/project-release.yaml has release_version "1.2.0" and is_dev: true
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the output contains the exact line "--tag ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.2.0-dev"
+```
+
+**Scenario: A non-dev build tags the image without a suffix**
+
+```gherkin
+Scenario: A non-dev build tags the image without a suffix
+  Given build-conf/project-release.yaml has release_version "1.2.0" and is_dev: false
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the output contains the exact line "--tag ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.2.0"
+```
+
+**Scenario: A missing is_dev key tags the image without a suffix**
+
+```gherkin
+Scenario: A missing is_dev key tags the image without a suffix
+  Given build-conf/project-release.yaml has release_version "1.2.0" and no is_dev key
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the output contains the exact line "--tag ghcr.io/agenticsnz/llama.cpp-v0.5.0-amd-7.14.1-gfx1200:1.2.0"
+```
+
+**Scenario: A dev build still publishes the latest tag**
+
+```gherkin
+Scenario: A dev build still publishes the latest tag
+  Given build-conf/project-release.yaml has release_version "1.2.0" and is_dev: true
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the output contains a --tag line ending in ":latest"
+```
+
+**Scenario: A non-boolean is_dev stops the build with a non-zero status**
+
+```gherkin
+Scenario: A non-boolean is_dev stops the build with a non-zero status
+  Given build-conf/project-release.yaml has is_dev: "yes"
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then the exit status is non-zero
+```
+
+**Scenario: A non-boolean is_dev is named in the error**
+
+```gherkin
+Scenario: A non-boolean is_dev is named in the error
+  Given build-conf/project-release.yaml has is_dev: "yes"
+  When build-rocm.sh is run with --dry-run and the existing axis files
+  Then stderr names build-conf/project-release.yaml
+```
+
+#### R9. CONTRIBUTING.md describes the -dev suffix
+
+**Requirement:** The Versioning section of `CONTRIBUTING.md` says a dev build appends `-dev` to the image version.
+
+**Scenario: CONTRIBUTING.md mentions the -dev suffix in the Versioning section**
+
+```gherkin
+Scenario: CONTRIBUTING.md mentions the -dev suffix in the Versioning section
+  Given CONTRIBUTING.md
+  When the Versioning section is searched for the phrase "-dev"
+  Then the phrase is found
+```
+
 ## What is left to the builder
 
 - The exact `yq` call in `build-rocm.sh`, and where the manifest-reading step sits in the argument flow.
@@ -250,3 +371,6 @@ Scenario: The README neutral-axis table does not name VERSION
 - **Version format:** the script applies the same `MAJOR.MINOR.PATCH` check as the tool's `--set`.
 - **Missing yq:** stops the build with a message, rather than falling back to another source.
 - **Docs:** `CONTRIBUTING.md` and `README.md` are updated in the same change, so they don't name a location that no longer holds the value.
+- **`is_dev` through the tool:** the build reads `is_dev` with `--get`, so all manifest reads go through one tool. Reading it with `yq` directly in the build script would be the alternative.
+- **Missing `is_dev`:** reads as `false`, so existing manifests need no change.
+- **Non-boolean `is_dev`:** fails, rather than being treated as `false`, because `"yes"` in a manifest most likely means `true`.
