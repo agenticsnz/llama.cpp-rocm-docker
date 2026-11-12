@@ -112,26 +112,35 @@ else
     note_pass "Getting a number key prints its value"
 fi
 
-# Scenario: Getting an absent key exits with status 1 and names the key
-fixture="$(make_fixture get-absent-key)"
-err="$("$fixture/scripts/release_manifest_tool.sh" --get nope 2>&1 >/dev/null)"
+# Scenario: Getting an absent key exits with status 1
+fixture="$(make_fixture get-absent-key-status)"
+"$fixture/scripts/release_manifest_tool.sh" --get nope >/dev/null 2>&1
 status=$?
 if [ "$status" -ne 1 ]; then
     note_fail "--get nope: exit $status, expected 1"
-elif ! grep -qF "nope" <<<"$err"; then
-    note_fail "--get nope: stderr does not name nope"
 else
-    note_pass "Getting an absent key exits with status 1 and names the key"
+    note_pass "Getting an absent key exits with status 1"
 fi
 
-# Scenario: Getting a map key exits with status 1
+# Scenario: Getting an absent key names the key in the error
+fixture="$(make_fixture get-absent-key-name)"
+err="$("$fixture/scripts/release_manifest_tool.sh" --get nope 2>&1 >/dev/null)"
+if ! grep -qF "nope" <<<"$err"; then
+    note_fail "--get nope: stderr does not name nope"
+else
+    note_pass "Getting an absent key names the key in the error"
+fi
+
+# Scenario: Getting a map key exits with status 1 and names the key
 fixture="$(make_fixture get-map-key)"
-"$fixture/scripts/release_manifest_tool.sh" --get support >/dev/null 2>&1
+err="$("$fixture/scripts/release_manifest_tool.sh" --get support 2>&1 >/dev/null)"
 status=$?
 if [ "$status" -ne 1 ]; then
     note_fail "--get support: exit $status, expected 1"
+elif ! grep -qF "support" <<<"$err"; then
+    note_fail "--get support: stderr does not name support"
 else
-    note_pass "Getting a map key exits with status 1"
+    note_pass "Getting a map key exits with status 1 and names the key"
 fi
 
 # Scenario: Getting a key written as a yq expression looks up a literal key
