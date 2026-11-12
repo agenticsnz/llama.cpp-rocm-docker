@@ -44,13 +44,24 @@ for doc in "$README" "$CONTRIBUTING"; do
 done
 
 echo
-echo "== README does not place the image version in conf/build-config.env =="
+echo "== README names no VERSION table key =="
 # Scenario: The README neutral-axis table does not name VERSION
-if grep -qE '^\|.*conf/build-config\.env.*image version' "$README"; then
-    note_fail "README places the image version in conf/build-config.env"
+readme_names_version_key() { grep -qE "^\|[[:space:]]*\`VERSION\`[[:space:]]*\|" "$1"; }
+if readme_names_version_key "$README"; then
+    note_fail "README names VERSION as a table key"
 else
-    note_pass "README does not place the image version in conf/build-config.env"
+    note_pass "README names no VERSION table key"
 fi
+# The check must bite: a scratch copy with the row must be detected.
+SCRATCH_README="$SRC/.tmp/readme-version-row.md"
+mkdir -p "$SRC/.tmp"
+printf '%s\n' '| Variable | Used for |' '|---|---|' "| \`VERSION\` | Image version tag |" > "$SCRATCH_README"
+if readme_names_version_key "$SCRATCH_README"; then
+    note_pass "the VERSION row check detects a scratch row"
+else
+    note_fail "the VERSION row check misses a scratch row"
+fi
+rm -f "$SCRATCH_README"
 
 echo
 echo "== README links the contribution guide =="
