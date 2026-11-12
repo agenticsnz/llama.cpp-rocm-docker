@@ -398,6 +398,16 @@ emit_tag_arguments() {
     fi
 }
 
+# Print the docker build arguments for the tags, one word per line, so the
+# caller can append each word as its own argv element. Built from
+# emit_tag_arguments so the rule for which tags are published lives in one place.
+build_docker_tag_arguments() {
+    local image_reference="$1" tag_flag tag_value
+    while IFS=' ' read -r tag_flag tag_value; do
+        printf '%s\n' "$tag_flag" "$tag_value"
+    done < <(emit_tag_arguments "$image_reference")
+}
+
 parse_arguments() {
     local flag_name flag_value set_argument set_key set_value
     while [ $# -gt 0 ]; do
@@ -511,8 +521,9 @@ main() {
     for resolved_key in $(printf '%s\n' "${!RESOLVED_VALUE[@]}" | sort); do
         build_arguments+=(--build-arg "$resolved_key=${RESOLVED_VALUE[$resolved_key]}")
     done
-    build_arguments+=(--tag "$image_reference:$IMAGE_TAG")
-    [ "$IMAGE_IS_DEV" = 'no' ] && build_arguments+=(--tag "$image_reference:$TAG_LATEST")
+    local -a tag_words=()
+    mapfile -t tag_words < <(build_docker_tag_arguments "$image_reference")
+    build_arguments+=("${tag_words[@]}")
     # Cache bypass sits with the other docker options, ahead of the -f flag
     # and the context path, which docker requires last.
     [ "$NO_CACHE" = 'yes' ] && build_arguments+=(--no-cache)

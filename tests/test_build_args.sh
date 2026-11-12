@@ -792,5 +792,40 @@ run_copy "$TREE" "$SCRATCH/d10" "$SCRATCH/de10" >/dev/null
 expect_stderr "$SCRATCH/de10" "build-conf/project-release.yaml"
 
 echo
+echo "== the push path omits the latest tag for a dev build =="
+# Scenario: a real build of a dev copy hands docker no --tag ending in :latest.
+# The stub records argv, so the build path runs without a docker daemon.
+TREE="$(copy_tree push-dev)"
+set_is_dev "$TREE" true
+STUB_LOG="$SCRATCH/argv-pd.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$TREE/build-rocm.sh" --arch-env "$TREE/conf/amd-gfx1200.env" --rocm-env "$TREE/conf/amd-7.14.1.env" \
+    --config-env "$TREE/conf/build-config.env" --llamacpp-env "$TREE/conf/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" \
+    >"$SCRATCH/pd1" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then note_pass "real dev invocation exits 0"; else note_fail "real dev invocation failed"; fi
+if grep -q -- ':latest>$' "$SCRATCH/argv-pd.log"; then
+    note_fail "dev build hands docker a latest tag"
+else
+    note_pass "dev build hands docker no latest tag"
+fi
+
+echo
+echo "== the push path includes the latest tag for a non-dev build =="
+# Scenario: the control for the case above, so an empty tag list cannot pass by accident.
+TREE="$(copy_tree push-nondev)"
+set_is_dev "$TREE" false
+STUB_LOG="$SCRATCH/argv-pn.log" PATH="$SCRATCH/stubbin:$PATH" \
+    "$TREE/build-rocm.sh" --arch-env "$TREE/conf/amd-gfx1200.env" --rocm-env "$TREE/conf/amd-7.14.1.env" \
+    --config-env "$TREE/conf/build-config.env" --llamacpp-env "$TREE/conf/llamacpp-v0.5.0.env" --source "$SCRATCH/fakesrc" \
+    >"$SCRATCH/pn1" 2>&1
+rc=$?
+if [ "$rc" -eq 0 ]; then note_pass "real non-dev invocation exits 0"; else note_fail "real non-dev invocation failed"; fi
+if grep -q -- ':latest>$' "$SCRATCH/argv-pn.log"; then
+    note_pass "non-dev build hands docker a latest tag"
+else
+    note_fail "non-dev build hands docker no latest tag"
+fi
+
+echo
 printf '=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
