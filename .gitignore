@@ -8,6 +8,7 @@ runtime-stage.log
 llama.cpp/*
 .config
 .local
+.superpowers
 
 # Devcontainer artefacts regenerated on every rebuild.
 .devcontainer/devcontainer-lock.json
