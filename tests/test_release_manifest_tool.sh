@@ -75,6 +75,16 @@ expect_usage_error "--add gpu gfx1200 exits 2 and leaves the manifest unchanged"
 expect_usage_error "--list gpu exits 2 with usage" \
     "$(make_fixture list-unknown-axis)" --list gpu
 
+# Scenario: An axis argument holding two axis names is a usage error
+expect_usage_error "--list 'amd-rocm amd-arch' exits 2 with usage" \
+    "$(make_fixture list-two-axes)" --list "amd-rocm amd-arch"
+
+expect_usage_error "--add 'llama-cpp amd-rocm' x exits 2 and leaves the manifest unchanged" \
+    "$(make_fixture add-two-axes)" --add "llama-cpp amd-rocm" x
+
+expect_usage_error "--delete 'amd-rocm amd-arch' x exits 2 with usage" \
+    "$(make_fixture delete-two-axes)" --delete "amd-rocm amd-arch" x
+
 echo
 echo "== set and list reject the wrong top-level name =="
 expect_usage_error "--set amd-rocm 1.0.0 exits 2 with usage" \
@@ -283,6 +293,20 @@ elif ! cmp -s "$manifest" "$fixture/project-release.saved"; then
     note_fail "--add amd-arch amd-gfx9999: manifest changed"
 else
     note_pass "--add amd-arch amd-gfx9999 exits 1 and leaves the manifest unchanged"
+fi
+
+# Scenario: Adding a value with a missing manifest fails
+fixture="$(make_fixture add-missing-manifest)"
+: > "$fixture/conf/amd-8.0.0.env"
+rm -f "$fixture/build-conf/project-release.yaml"
+"$fixture/scripts/release_manifest_tool.sh" --add amd-rocm amd-8.0.0 2>/dev/null
+status=$?
+if [ "$status" -ne 1 ]; then
+    note_fail "--add with missing manifest: exit $status, expected 1"
+elif [ -e "$fixture/build-conf/project-release.yaml" ]; then
+    note_fail "--add with missing manifest: manifest was created"
+else
+    note_pass "--add with missing manifest exits 1 and creates nothing"
 fi
 
 # Review focus: a value with a double quote is stored and listed exactly

@@ -33,11 +33,12 @@ check_failed() {
 }
 
 is_axis() {
-    # Returns 0 when $1 is one of $AXES.
-    case " $AXES " in
-        *" $1 "*) return 0 ;;
-        *) return 1 ;;
-    esac
+    # Returns 0 when $1 equals one whole word of $AXES.
+    local axis
+    for axis in $AXES; do
+        [ "$axis" = "$1" ] && return 0
+    done
+    return 1
 }
 
 manifest_exists() {

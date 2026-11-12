@@ -16,6 +16,8 @@ FAIL=0
 note_pass() { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 note_fail() { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 
+trap 'rm -rf "$FIXTURE_ROOT"' EXIT
+
 # new_fixture <name>: prints the path of a fresh, empty fixture directory.
 new_fixture() {
     local fixture_dir="$FIXTURE_ROOT/$1"
