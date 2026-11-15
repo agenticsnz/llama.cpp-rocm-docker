@@ -53,7 +53,6 @@ declare -A KEY_AXIS=(
     [CMAKE_BUILD_TYPE]=neutral
     [REGISTRY]=neutral
     [LLAMA_CPP_VERSION]=llamacpp
-    [VERSION]=neutral
     [GGML_NATIVE]=neutral
     [CMAKE_EXTRA_ARGS]=llamacpp
     [LLAMA_ARG_PORT]=llamacpp
@@ -62,7 +61,7 @@ declare -A KEY_AXIS=(
 # Every key the build cannot proceed without, since the image reference or the
 # compiler target depends on each.
 declare -a REQUIRED_KEYS=(
-    REGISTRY LLAMA_CPP_VERSION VERSION
+    REGISTRY LLAMA_CPP_VERSION
     GPU_TARGET ARCH_STRING
     ROCM_BASE ROCM_VERSION ROCM_CORE_DIR
 )
@@ -82,6 +81,13 @@ declare -A SHELL_ADOPTED=()
 
 # Surviving values after ownership is applied.
 declare -A RESOLVED_VALUE=()
+
+# Image version read from release_version in the release manifest.
+IMAGE_VERSION=''
+# Version part of the image tag, equal to IMAGE_VERSION until a dev suffix is added.
+IMAGE_TAG=''
+# Whether this is a dev build, from is_dev in the release manifest: yes or no.
+IMAGE_IS_DEV=''
 
 # Image reference components, fixed by this project's naming scheme.
 readonly IMAGE_LABEL_ROOT='agenticsnz'
@@ -149,6 +155,10 @@ load_configuration_file() {
         value="${line#*"$ASSIGNMENT_SEPARATOR"}"
         key="${key//[[:space:]]/}"
         [ -z "$key" ] && continue
+        if [ "$key" = "VERSION" ]; then
+            warn "VERSION is read from build-conf/project-release.yaml, so the VERSION line in '$file_path' is ignored."
+            continue
+        fi
         FILE_VALUE["$file_path|$key"]="$value"
     done < "$file_path"
 }
@@ -344,13 +354,58 @@ emit_resolved_arguments() {
     done
 }
 
-# Emit the two tags the build publishes: the pinned version, which deployments
+# Print one key's value from the release manifest, read through the manifest
+# tool. Dies naming the manifest when yq is missing or the key cannot be read.
+read_manifest_key() {
+    local key="$1" tool_output
+    command -v yq >/dev/null 2>&1 || die "yq v4 is required on PATH to read build-conf/project-release.yaml."
+    tool_output="$("$SCRIPT_DIR/scripts/release_manifest_tool.sh" --get "$key" 2>&1)" || \
+        die "could not read '$key' from build-conf/project-release.yaml: $tool_output"
+    printf '%s' "$tool_output"
+}
+
+# Set IMAGE_VERSION from release_version in the manifest and check it is
+# MAJOR.MINOR.PATCH digits, since the tag and the image reference depend on it.
+# Set IMAGE_IS_DEV from is_dev in the manifest, which must be true or false, and
+# derive IMAGE_TAG from both. The reads run in a subshell, so a failure there
+# exits from the subshell and is turned into an exit of this script here.
+resolve_image_version() {
+    IMAGE_VERSION="$(read_manifest_key release_version)" || exit 2
+    [[ "$IMAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+        die "release_version '$IMAGE_VERSION' in build-conf/project-release.yaml must be MAJOR.MINOR.PATCH digits."
+    local is_dev
+    is_dev="$(read_manifest_key is_dev)" || exit 2
+    case "$is_dev" in
+        true)  IMAGE_IS_DEV='yes' ;;
+        false) IMAGE_IS_DEV='no' ;;
+        *) die "is_dev '$is_dev' in build-conf/project-release.yaml must be true or false." ;;
+    esac
+    IMAGE_TAG="$IMAGE_VERSION"
+    if [ "$IMAGE_IS_DEV" = 'yes' ]; then
+        IMAGE_TAG="$IMAGE_VERSION-dev"
+    fi
+}
+
+# Emit the tags the build publishes: the pinned version, which deployments
 # reference, and latest, which is overwritten by the next build and is therefore
-# a convenience reference rather than a pinnable one.
+# a convenience reference rather than a pinnable one. A dev build's version tag
+# carries the -dev suffix and does not move latest.
 emit_tag_arguments() {
     local image_reference="$1"
-    printf -- '--tag %s:%s\n' "$image_reference" "${RESOLVED_VALUE[VERSION]}"
-    printf -- '--tag %s:%s\n' "$image_reference" "$TAG_LATEST"
+    printf -- '--tag %s:%s\n' "$image_reference" "$IMAGE_TAG"
+    if [ "$IMAGE_IS_DEV" = 'no' ]; then
+        printf -- '--tag %s:%s\n' "$image_reference" "$TAG_LATEST"
+    fi
+}
+
+# Print the docker build arguments for the tags, one word per line, so the
+# caller can append each word as its own argv element. Built from
+# emit_tag_arguments so the rule for which tags are published lives in one place.
+build_docker_tag_arguments() {
+    local image_reference="$1" tag_flag tag_value
+    while IFS=' ' read -r tag_flag tag_value; do
+        printf '%s\n' "$tag_flag" "$tag_value"
+    done < <(emit_tag_arguments "$image_reference")
 }
 
 parse_arguments() {
@@ -364,6 +419,7 @@ parse_arguments() {
                 set_key="${set_argument%%"$ASSIGNMENT_SEPARATOR"*}"
                 set_key="${set_key//[[:space:]]/}"
                 [ -n "$set_key" ] || die "invalid --set value '$set_argument': key is empty. $USAGE_MESSAGE"
+                [ "$set_key" != "VERSION" ] || die "VERSION is read from build-conf/project-release.yaml. Change release_version there instead of passing --set VERSION."
                 set_value="${set_argument#*"$ASSIGNMENT_SEPARATOR"}"
                 CLI_VALUE["$set_key"]="$set_value"
                 shift 2
@@ -438,6 +494,7 @@ main() {
     apply_cli_overrides
     require_keys_present
     run_consistency_checks
+    resolve_image_version
 
     local image_reference
     image_reference="$(build_image_reference)"
@@ -464,8 +521,9 @@ main() {
     for resolved_key in $(printf '%s\n' "${!RESOLVED_VALUE[@]}" | sort); do
         build_arguments+=(--build-arg "$resolved_key=${RESOLVED_VALUE[$resolved_key]}")
     done
-    build_arguments+=(--tag "$image_reference:${RESOLVED_VALUE[VERSION]}")
-    build_arguments+=(--tag "$image_reference:$TAG_LATEST")
+    local -a tag_words=()
+    mapfile -t tag_words < <(build_docker_tag_arguments "$image_reference")
+    build_arguments+=("${tag_words[@]}")
     # Cache bypass sits with the other docker options, ahead of the -f flag
     # and the context path, which docker requires last.
     [ "$NO_CACHE" = 'yes' ] && build_arguments+=(--no-cache)

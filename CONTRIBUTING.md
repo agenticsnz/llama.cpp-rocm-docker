@@ -24,7 +24,7 @@ A new axis — a dimension the build does not yet vary by — starts as an infra
 
 ## Versioning
 
-**The image name follows the axis versions**, exactly as today: `build-rocm.sh` composes `REGISTRY/agenticsnz/llama.cpp-<LLAMA_CPP_VERSION>-amd-<ROCM_VERSION>-<ARCH_STRING>` and tags it `<VERSION>` plus `latest`. The image version (`VERSION` in `conf/build-config.env`) **iterates when Dockerfile.rocm changes**, and the change **increments its last component** (`1.1.0` to `1.1.1`). Changes to configuration files alone do not iterate it; the axis versions in the image name already distinguish those images.
+**The image name follows the axis versions**, exactly as today: `build-rocm.sh` composes `REGISTRY/agenticsnz/llama.cpp-<LLAMA_CPP_VERSION>-amd-<ROCM_VERSION>-<ARCH_STRING>` and tags it with the image version plus `latest`. The image version is `release_version` in `build-conf/project-release.yaml`. It **iterates when Dockerfile.rocm changes**, and the change **increments its last component** (`1.1.0` to `1.1.1`). Changes to configuration files alone do not iterate it; the axis versions in the image name already distinguish those images. A dev build (`is_dev: true` in `build-conf/project-release.yaml`) appends `-dev` to the image version, so `1.2.0` is tagged `1.2.0-dev`, and it does not publish `latest`.
 
 ## Building locally
 
