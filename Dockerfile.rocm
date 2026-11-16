@@ -171,6 +171,9 @@ RUN set -e; \
         /src/build/bin/llama-server \
         /src/build/bin/libggml-hip.so \
         /src/build/bin/*.so \
+        /opt/rocm/core-*/lib/libamd_smi.so* \
+        $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/librocm_smi64.so* ) \
+        $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/liboam.so* ) \
         2>/dev/null \
     | grep -oE '/opt/rocm/[^[:space:]]+' \
     | while read -r resolved_candidate; do readlink -f "$resolved_candidate"; done \
