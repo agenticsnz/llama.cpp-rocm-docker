@@ -168,12 +168,15 @@ Scenario: an axis file without ROCM_SMI_PACKAGE is rejected
 
 ---
 
+## Python version
+
+Python 3.12 is used everywhere until a higher version is needed. The runtime image installs it via `python3` from the Ubuntu 24.04 base packages, and the version is exposed as a build argument `PYTHON_VERSION` with a default of `3.12` in `Dockerfile.rocm`, so it can be overridden per build without editing the Dockerfile. The SMI tools require `python3 (>= 3.6.8)`, so 3.12 satisfies them on every axis. No axis file needs a Python version key.
+
 ## Open items
 
 - `rocm-smi` is absent on 10.1.0. The design treats it as optional per axis, so 10.1.0 builds without it and the image documentation says so.
 - `amdrocm-llvm7.14` has not been measured, so the 7.14.1 dependency size is a lower bound.
 - The 10.1.0 path for `amd-smi` has not been exercised in a built image, only inspected in the base.
-- The python dependency set in the runtime image is not decided. The design requires it to be satisfied; how is part of the implementation plan.
 
 ## Out of scope
 
