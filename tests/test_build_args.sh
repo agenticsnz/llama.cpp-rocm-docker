@@ -29,6 +29,10 @@ EXPECTED_FA_QUANTS="$(conf_key amd-gfx1200.env GGML_CUDA_FA_QUANTS)"
 EXPECTED_ROCM_BASE="$(conf_key amd-7.14.1.env ROCM_BASE)"
 EXPECTED_ROCM_VERSION="$(conf_key amd-7.14.1.env ROCM_VERSION)"
 EXPECTED_ROCM_CORE_DIR="$(conf_key amd-7.14.1.env ROCM_CORE_DIR)"
+EXPECTED_AMD_SMI_PACKAGE_714="$(conf_key amd-7.14.1.env AMD_SMI_PACKAGE)"
+EXPECTED_ROCM_SMI_PACKAGE_714="$(conf_key amd-7.14.1.env ROCM_SMI_PACKAGE)"
+EXPECTED_AMD_SMI_PACKAGE_1010="$(conf_key amd-10.1.0.env AMD_SMI_PACKAGE)"
+EXPECTED_ROCM_SMI_PACKAGE_1010="$(conf_key amd-10.1.0.env ROCM_SMI_PACKAGE)"
 EXPECTED_CMAKE_BUILD_TYPE="$(conf_key build-config.env CMAKE_BUILD_TYPE)"
 EXPECTED_GGML_NATIVE="$(conf_key build-config.env GGML_NATIVE)"
 EXPECTED_REGISTRY="$(conf_key build-config.env REGISTRY)"
@@ -107,6 +111,13 @@ else
     note_pass "the resolved arguments carry no GGML_CUDA_FA_ALL_QUANTS"
 fi
 
+echo
+echo "== ROCm axis files declare SMI package keys =="
+if [ -n "$EXPECTED_AMD_SMI_PACKAGE_714" ]; then note_pass "amd-7.14.1.env sets AMD_SMI_PACKAGE"
+else note_fail "amd-7.14.1.env is missing AMD_SMI_PACKAGE"; fi
+
+if [ -n "$EXPECTED_AMD_SMI_PACKAGE_1010" ]; then note_pass "amd-10.1.0.env sets AMD_SMI_PACKAGE"
+else note_fail "amd-10.1.0.env is missing AMD_SMI_PACKAGE"; fi
 echo
 echo "== the llama.cpp version axis is a fourth required file =="
 # Scenario: --llamacpp-env joins --arch-env, --rocm-env and --config-env as a
