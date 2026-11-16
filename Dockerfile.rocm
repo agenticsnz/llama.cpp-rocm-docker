@@ -175,7 +175,7 @@ RUN set -e; \
         $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/librocm_smi64.so* ) \
         $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/liboam.so* ) \
         2>/dev/null \
-    | grep -oE '/opt/rocm/[^[:space:]]+' \
+    | grep -oE '/opt/rocm/[^[:space:]:]+' \
     | while read -r resolved_candidate; do readlink -f "$resolved_candidate"; done \
     | sort -u > /opt/closure/paths.txt; \
     if [ ! -s /opt/closure/paths.txt ]; then \
