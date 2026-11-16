@@ -243,6 +243,16 @@ RUN set -euo pipefail; \
         echo "no ${GPU_TARGET} kernel blobs were found under /opt/rocm. The runtime image would have no GPU kernels, so it would start cleanly and report no compute device." >&2; \
         exit 1; \
     fi; \
+    # Copy the SMI tool files from the core tree. amd-smi is always present; \
+    # rocm-smi is legacy and may be absent on some axes. \
+    mkdir -p /runtime/rocm/core-*/bin /runtime/rocm/core-*/libexec /runtime/rocm/core-*/share 2>/dev/null || true; \
+    cp -a "${ROCM_CORE_DIR}/bin/amd-smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/bin/" 2>/dev/null || true; \
+    cp -a "${ROCM_CORE_DIR}/libexec/amdsmi_cli" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/libexec/" 2>/dev/null || true; \
+    cp -a "${ROCM_CORE_DIR}/share/amd_smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/share/" 2>/dev/null || true; \
+    if [ -n "${ROCM_SMI_PACKAGE:-}" ]; then \
+        cp -a "${ROCM_CORE_DIR}/bin/rocm-smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/bin/" 2>/dev/null || true; \
+        cp -a "${ROCM_CORE_DIR}/libexec/rocm_smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/libexec/" 2>/dev/null || true; \
+    fi; \
     printf 'runtime tree: %s files, %s MB of %s.\n' \
         "$(find /runtime/rocm -type f | wc -l)" \
         "$(du -sm /runtime/rocm | cut -f1)" \
