@@ -36,6 +36,13 @@ ARG ROCM_BASE_ASSEMBLY=published-multiarch-image
 # purpose: 7.14.0 and 7.14.1 share core-7.14, so it is not derivable from
 # ROCM_VERSION, and a build copying from the wrong tree ships no backend.
 ARG ROCM_CORE_DIR=/opt/rocm/core-10.1
+# PYTHON_VERSION and AMD_SMI_PACKAGE are declared as build args for visibility and
+# future override, but are not consumed by any RUN instruction: Python is installed
+# from the Ubuntu 24.04 base package (3.12) and amd-smi is always shipped. Do not
+# remove them without checking the #16 design spec.
+ARG PYTHON_VERSION=3.12
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # Build type, supplied by the axis-neutral env file. The default only makes a
 # bare invocation of this file produce a usable binary; the env file is what a
@@ -89,6 +96,9 @@ ARG CMAKE_BUILD_TYPE
 ARG GGML_CUDA_FA_QUANTS
 ARG CMAKE_EXTRA_ARGS
 ARG CMAKE_BUILD_VERBOSE
+ARG PYTHON_VERSION
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # The CPU backend would otherwise be tuned to whichever host compiled the image,
 # since GGML_NATIVE is ON by default when not cross-compiling. Upstream's own
@@ -165,8 +175,11 @@ RUN set -e; \
         /src/build/bin/llama-server \
         /src/build/bin/libggml-hip.so \
         /src/build/bin/*.so \
+        /opt/rocm/core-*/lib/libamd_smi.so* \
+        $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/librocm_smi64.so* ) \
+        $( [ -n "${ROCM_SMI_PACKAGE:-}" ] && echo /opt/rocm/core-*/lib/liboam.so* ) \
         2>/dev/null \
-    | grep -oE '/opt/rocm/[^[:space:]]+' \
+    | grep -oE '/opt/rocm/[^[:space:]:]+' \
     | while read -r resolved_candidate; do readlink -f "$resolved_candidate"; done \
     | sort -u > /opt/closure/paths.txt; \
     if [ ! -s /opt/closure/paths.txt ]; then \
@@ -196,6 +209,8 @@ FROM build AS runtime-tree
 
 ARG GPU_TARGET
 ARG ROCM_CORE_DIR
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # Assemble the ROCm tree the runtime image ships: the resolved library closure
 # plus every kernel blob whose name carries this architecture's token, both placed
@@ -232,6 +247,19 @@ RUN set -euo pipefail; \
         echo "no ${GPU_TARGET} kernel blobs were found under /opt/rocm. The runtime image would have no GPU kernels, so it would start cleanly and report no compute device." >&2; \
         exit 1; \
     fi; \
+    # Copy the SMI tool files from the core tree. amd-smi is always present; \
+    # rocm-smi is legacy and may be absent on some axes. The destination \
+    # preserves the versioned core tree (core-7.14) so the relative symlinks \
+    # inside bin/ resolve and Task 6's PATH symlinks point at the right place. \
+    SMI_DEST="/runtime/rocm/${ROCM_CORE_DIR#/opt/rocm/}"; \
+    mkdir -p "$SMI_DEST/bin" "$SMI_DEST/libexec" "$SMI_DEST/share"; \
+    cp -a "${ROCM_CORE_DIR}/bin/amd-smi" "$SMI_DEST/bin/"; \
+    cp -a "${ROCM_CORE_DIR}/libexec/amdsmi_cli" "$SMI_DEST/libexec/"; \
+    cp -a "${ROCM_CORE_DIR}/share/amd_smi" "$SMI_DEST/share/"; \
+    if [ -n "${ROCM_SMI_PACKAGE:-}" ]; then \
+        cp -a "${ROCM_CORE_DIR}/bin/rocm-smi" "$SMI_DEST/bin/"; \
+        cp -a "${ROCM_CORE_DIR}/libexec/rocm_smi" "$SMI_DEST/libexec/"; \
+    fi; \
     printf 'runtime tree: %s files, %s MB of %s.\n' \
         "$(find /runtime/rocm -type f | wc -l)" \
         "$(du -sm /runtime/rocm | cut -f1)" \
@@ -247,16 +275,28 @@ RUN set -euo pipefail; \
 # and serves nothing.
 FROM ubuntu:24.04 AS runtime
 
+ARG PYTHON_VERSION
+ARG ROCM_CORE_DIR
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
+
 # libgomp1 is the OpenMP runtime libggml links; curl and ca-certificates serve the
 # healthcheck; ffmpeg is a llama.cpp runtime dependency. The staged apt lists are
 # removed so the layer carries no package index.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1 curl ffmpeg ca-certificates \
+        libgomp1 curl ffmpeg ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # The trimmed ROCm tree, copied from the assembly stage so only the selected
 # files cross the boundary.
 COPY --from=runtime-tree /runtime/rocm /opt/rocm
+
+# Make the SMI tools available on PATH. They live under the versioned core
+# tree, which is not on PATH by default.
+RUN ln -sf "${ROCM_CORE_DIR}/bin/amd-smi" /usr/local/bin/amd-smi && \
+    if [ -n "${ROCM_SMI_PACKAGE:-}" ] && [ -f "${ROCM_CORE_DIR}/bin/rocm-smi" ]; then \
+        ln -sf "${ROCM_CORE_DIR}/bin/rocm-smi" /usr/local/bin/rocm-smi; \
+    fi
 
 # The server, the CLI and the backend libraries. Copied whole from the build tree
 # rather than selected, because the CPU backend's runtime variant selection needs
