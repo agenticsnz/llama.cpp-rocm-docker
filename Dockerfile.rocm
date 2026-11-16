@@ -36,6 +36,10 @@ ARG ROCM_BASE_ASSEMBLY=published-multiarch-image
 # purpose: 7.14.0 and 7.14.1 share core-7.14, so it is not derivable from
 # ROCM_VERSION, and a build copying from the wrong tree ships no backend.
 ARG ROCM_CORE_DIR=/opt/rocm/core-10.1
+# PYTHON_VERSION and AMD_SMI_PACKAGE are declared as build args for visibility and
+# future override, but are not consumed by any RUN instruction: Python is installed
+# from the Ubuntu 24.04 base package (3.12) and amd-smi is always shipped. Do not
+# remove them without checking the #16 design spec.
 ARG PYTHON_VERSION=3.12
 ARG AMD_SMI_PACKAGE
 ARG ROCM_SMI_PACKAGE

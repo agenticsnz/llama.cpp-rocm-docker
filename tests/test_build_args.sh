@@ -118,6 +118,13 @@ else note_fail "amd-7.14.1.env is missing AMD_SMI_PACKAGE"; fi
 
 if [ -n "$EXPECTED_AMD_SMI_PACKAGE_1010" ]; then note_pass "amd-10.1.0.env sets AMD_SMI_PACKAGE"
 else note_fail "amd-10.1.0.env is missing AMD_SMI_PACKAGE"; fi
+
+# Key presence: ROCM_SMI_PACKAGE may be empty (absent on 10.1.0+) but the key
+# itself must exist so a deletion is not mistaken for an empty value.
+if grep -qE '^[[:space:]]*ROCM_SMI_PACKAGE[[:space:]]*=' "$CONF/amd-7.14.1.env"; then note_pass "amd-7.14.1.env declares ROCM_SMI_PACKAGE"
+else note_fail "amd-7.14.1.env is missing ROCM_SMI_PACKAGE"; fi
+if grep -qE '^[[:space:]]*ROCM_SMI_PACKAGE[[:space:]]*=' "$CONF/amd-10.1.0.env"; then note_pass "amd-10.1.0.env declares ROCM_SMI_PACKAGE"
+else note_fail "amd-10.1.0.env is missing ROCM_SMI_PACKAGE"; fi
 echo
 echo "== the llama.cpp version axis is a fourth required file =="
 # Scenario: --llamacpp-env joins --arch-env, --rocm-env and --config-env as a

@@ -137,13 +137,14 @@ Scenario: python3 runs in the 10.1.0 runtime image
 
 ## R4: package names come from the axis files
 
-Scenario: the installed amd-smi package matches AMD_SMI_PACKAGE
+Scenario: the shipped amd-smi files match AMD_SMI_PACKAGE
 
 ```gherkin
-Scenario: the installed amd-smi package matches AMD_SMI_PACKAGE
+Scenario: the shipped amd-smi files match AMD_SMI_PACKAGE
   Given the amd-7.14.1 axis file sets AMD_SMI_PACKAGE to "amdrocm-amdsmi7.14"
   When the runtime image is built
-  Then the dpkg status of the image lists "amdrocm-amdsmi7.14" as installed
+  Then the image contains the amd-smi tool and its Python module
+  And the tool reports a library version matching the axis package
 ```
 
 ## R5: discovery is repeated for every axis
