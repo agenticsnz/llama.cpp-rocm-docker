@@ -280,12 +280,19 @@ ARG ROCM_SMI_PACKAGE
 # healthcheck; ffmpeg is a llama.cpp runtime dependency. The staged apt lists are
 # removed so the layer carries no package index.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1 curl ffmpeg ca-certificates \
+        libgomp1 curl ffmpeg ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # The trimmed ROCm tree, copied from the assembly stage so only the selected
 # files cross the boundary.
 COPY --from=runtime-tree /runtime/rocm /opt/rocm
+
+# Make the SMI tools available on PATH. They live under the versioned core
+# tree, which is not on PATH by default.
+RUN ln -sf "${ROCM_CORE_DIR}/bin/amd-smi" /usr/local/bin/amd-smi && \
+    if [ -n "${ROCM_SMI_PACKAGE:-}" ] && [ -f "${ROCM_CORE_DIR}/bin/rocm-smi" ]; then \
+        ln -sf "${ROCM_CORE_DIR}/bin/rocm-smi" /usr/local/bin/rocm-smi; \
+    fi
 
 # The server, the CLI and the backend libraries. Copied whole from the build tree
 # rather than selected, because the CPU backend's runtime variant selection needs
