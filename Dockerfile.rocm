@@ -36,6 +36,9 @@ ARG ROCM_BASE_ASSEMBLY=published-multiarch-image
 # purpose: 7.14.0 and 7.14.1 share core-7.14, so it is not derivable from
 # ROCM_VERSION, and a build copying from the wrong tree ships no backend.
 ARG ROCM_CORE_DIR=/opt/rocm/core-10.1
+ARG PYTHON_VERSION=3.12
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # Build type, supplied by the axis-neutral env file. The default only makes a
 # bare invocation of this file produce a usable binary; the env file is what a
@@ -89,6 +92,9 @@ ARG CMAKE_BUILD_TYPE
 ARG GGML_CUDA_FA_QUANTS
 ARG CMAKE_EXTRA_ARGS
 ARG CMAKE_BUILD_VERBOSE
+ARG PYTHON_VERSION
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # The CPU backend would otherwise be tuned to whichever host compiled the image,
 # since GGML_NATIVE is ON by default when not cross-compiling. Upstream's own
@@ -196,6 +202,8 @@ FROM build AS runtime-tree
 
 ARG GPU_TARGET
 ARG ROCM_CORE_DIR
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # Assemble the ROCm tree the runtime image ships: the resolved library closure
 # plus every kernel blob whose name carries this architecture's token, both placed
@@ -246,6 +254,11 @@ RUN set -euo pipefail; \
 # library produces an image that starts, reports the GPU, passes a healthcheck,
 # and serves nothing.
 FROM ubuntu:24.04 AS runtime
+
+ARG PYTHON_VERSION
+ARG ROCM_CORE_DIR
+ARG AMD_SMI_PACKAGE
+ARG ROCM_SMI_PACKAGE
 
 # libgomp1 is the OpenMP runtime libggml links; curl and ca-certificates serve the
 # healthcheck; ffmpeg is a llama.cpp runtime dependency. The staged apt lists are
