@@ -244,14 +244,17 @@ RUN set -euo pipefail; \
         exit 1; \
     fi; \
     # Copy the SMI tool files from the core tree. amd-smi is always present; \
-    # rocm-smi is legacy and may be absent on some axes. \
-    mkdir -p /runtime/rocm/core-*/bin /runtime/rocm/core-*/libexec /runtime/rocm/core-*/share 2>/dev/null || true; \
-    cp -a "${ROCM_CORE_DIR}/bin/amd-smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/bin/" 2>/dev/null || true; \
-    cp -a "${ROCM_CORE_DIR}/libexec/amdsmi_cli" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/libexec/" 2>/dev/null || true; \
-    cp -a "${ROCM_CORE_DIR}/share/amd_smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/share/" 2>/dev/null || true; \
+    # rocm-smi is legacy and may be absent on some axes. The destination \
+    # preserves the versioned core tree (core-7.14) so the relative symlinks \
+    # inside bin/ resolve and Task 6's PATH symlinks point at the right place. \
+    SMI_DEST="/runtime/rocm/${ROCM_CORE_DIR#/opt/rocm/}"; \
+    mkdir -p "$SMI_DEST/bin" "$SMI_DEST/libexec" "$SMI_DEST/share"; \
+    cp -a "${ROCM_CORE_DIR}/bin/amd-smi" "$SMI_DEST/bin/"; \
+    cp -a "${ROCM_CORE_DIR}/libexec/amdsmi_cli" "$SMI_DEST/libexec/"; \
+    cp -a "${ROCM_CORE_DIR}/share/amd_smi" "$SMI_DEST/share/"; \
     if [ -n "${ROCM_SMI_PACKAGE:-}" ]; then \
-        cp -a "${ROCM_CORE_DIR}/bin/rocm-smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/bin/" 2>/dev/null || true; \
-        cp -a "${ROCM_CORE_DIR}/libexec/rocm_smi" "/runtime/rocm/${ROCM_CORE_DIR#/opt/}/libexec/" 2>/dev/null || true; \
+        cp -a "${ROCM_CORE_DIR}/bin/rocm-smi" "$SMI_DEST/bin/"; \
+        cp -a "${ROCM_CORE_DIR}/libexec/rocm_smi" "$SMI_DEST/libexec/"; \
     fi; \
     printf 'runtime tree: %s files, %s MB of %s.\n' \
         "$(find /runtime/rocm -type f | wc -l)" \
